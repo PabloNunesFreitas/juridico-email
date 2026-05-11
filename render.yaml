@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: juridico-email-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: EMAIL_PROVIDER
+        value: gmail
+      - key: CENTRAL_EMAIL
+        sync: false
+      - key: SEED_ADMIN_EMAIL
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
+      - key: OUTLOOK_CLIENT_ID
+        sync: false
+      - key: OUTLOOK_CLIENT_SECRET
+        sync: false
+      - key: OUTLOOK_TENANT_ID
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: AUTO_SYNC_ENABLED
+        value: "true"
+      - key: AUTO_SYNC_INTERVAL_SECONDS
+        value: "60"
+      - key: SELF_PING_URL
+        sync: false
