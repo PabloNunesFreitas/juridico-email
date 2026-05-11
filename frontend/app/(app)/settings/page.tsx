@@ -387,35 +387,10 @@ export default function SettingsPage() {
       {/* Gmail ──────────────────────────────────────────────────────────── */}
       <div className="card p-4 space-y-4">
         <h2 className="font-semibold text-lg">Gmail</h2>
-
-        <details className="group">
-          <summary className="cursor-pointer text-sm text-blue-600 hover:underline list-none flex items-center gap-1">
-            <span className="group-open:hidden">▶ Ver passo a passo de configuração</span>
-            <span className="hidden group-open:inline">▼ Ocultar passo a passo</span>
-          </summary>
-          <div className="mt-3"><Accordion steps={GMAIL_STEPS} /></div>
-        </details>
-
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-gray-700">Credenciais padrão Gmail (Google Cloud Console)</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-gray-500">Client ID</label>
-              <input className="input mt-1" placeholder="123456789-abc.apps.googleusercontent.com" value={gmailClientId} onChange={(e) => setGmailClientId(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Client Secret {gmailSecretSet && <span className="text-green-600 ml-1">✓ configurado</span>}</label>
-              <input className="input mt-1" type="password" placeholder={gmailSecretSet ? "••••••••• (deixe vazio para manter)" : "GOCSPX-..."} value={gmailClientSecret} onChange={(e) => setGmailClientSecret(e.target.value)} />
-            </div>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <button className="btn-secondary" onClick={saveGmailCreds}>Salvar credenciais</button>
-            <button className="btn-primary" onClick={() => openAddModal("gmail")} disabled={busy || !gmailCredSaved} title={!gmailCredSaved ? "Salve as credenciais primeiro" : ""}>
-              + Adicionar conta Gmail
-            </button>
-          </div>
-          {!gmailCredSaved && <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">Preencha e salve as credenciais antes de conectar.</p>}
-        </div>
+        <p className="text-sm text-gray-600">Conecte uma ou mais contas Gmail para receber e responder e-mails diretamente pelo sistema.</p>
+        <button className="btn-primary" onClick={() => openAddModal("gmail")} disabled={busy}>
+          + Adicionar conta Gmail
+        </button>
       </div>
 
       {/* Outlook ─────────────────────────────────────────────────────────── */}
@@ -461,31 +436,15 @@ export default function SettingsPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md space-y-4">
             <h3 className="font-semibold text-lg">Adicionar conta {addModal.provider === "gmail" ? "Gmail" : "Outlook"}</h3>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="radio" checked={!addUseCustom} onChange={() => setAddUseCustom(false)} />
-                Usar credenciais padrão salvas
-              </label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="radio" checked={addUseCustom} onChange={() => setAddUseCustom(true)} />
-                Usar credenciais diferentes (outro app OAuth)
-              </label>
-            </div>
-            {addUseCustom && (
-              <div className="space-y-2">
-                <div>
-                  <label className="text-xs text-gray-500">Client ID</label>
-                  <input className="input mt-1" placeholder={addModal.provider === "gmail" ? "123456789-abc.apps.googleusercontent.com" : "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"} value={addClientId} onChange={(e) => setAddClientId(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">Client Secret</label>
-                  <input className="input mt-1" type="password" placeholder="..." value={addClientSecret} onChange={(e) => setAddClientSecret(e.target.value)} />
-                </div>
-              </div>
-            )}
+            <p className="text-sm text-gray-600">
+              Uma janela do Google vai abrir para você escolher e autorizar a conta {addModal.provider === "gmail" ? "Gmail" : "Outlook"}.
+              Após autorizar, a sincronização começa automaticamente em segundo plano.
+            </p>
             <div className="flex gap-2 justify-end pt-2">
               <button className="btn-secondary" onClick={() => setAddModal(null)}>Cancelar</button>
-              <button className="btn-primary" onClick={confirmAddAccount} disabled={busy}>Conectar</button>
+              <button className="btn-primary" onClick={confirmAddAccount} disabled={busy}>
+                {busy ? "Aguardando..." : "Conectar"}
+              </button>
             </div>
           </div>
         </div>
