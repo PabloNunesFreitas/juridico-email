@@ -1,6 +1,6 @@
 "use client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://juridico-email.onrender.com";
 
 export type Role = "ADMIN" | "USER";
 export interface User { id: number; name: string; email: string; role: Role; active: boolean; must_change_password: boolean; created_at: string; }
