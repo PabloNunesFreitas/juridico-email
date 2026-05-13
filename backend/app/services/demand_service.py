@@ -29,9 +29,20 @@ def upsert_assignment_rule(db: Session, sender_email: str, user_id: int) -> Assi
     return rule
 
 
+def _notify_assigned(db: Session, user_id: int, demand: Demand, actor_name: str) -> None:
+    from app.models.notification import Notification
+    subject_preview = (demand.subject or demand.sender_email or "")[:80]
+    db.add(Notification(
+        user_id=user_id, demand_id=demand.id, type="DEMAND_ASSIGNED",
+        message=f"{actor_name} atribuiu uma demanda a você: {subject_preview}",
+    ))
+
+
 def assign_demand(db: Session, demand: Demand, user: User, actor: User, bulk: bool = False) -> Demand:
     demand.assigned_user_id = user.id
     upsert_assignment_rule(db, demand.sender_email, user.id)
+    if user.id != actor.id:
+        _notify_assigned(db, user.id, demand, actor.name)
     log_event(
         db,
         event_type="DEMAND_ASSIGNED",

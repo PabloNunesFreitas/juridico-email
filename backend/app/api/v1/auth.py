@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -8,6 +9,10 @@ from app.core.security import create_access_token, hash_password, verify_passwor
 from app.models.user import User
 from app.schemas.auth import SetPasswordIn, TokenOut
 from app.schemas.user import UserOut
+
+
+class ThemeIn(BaseModel):
+    theme: str
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -36,6 +41,14 @@ def set_password(payload: SetPasswordIn, db: Session = Depends(get_db), user: Us
         raise HTTPException(status_code=400, detail="A senha deve ter pelo menos 6 caracteres")
     user.password_hash = hash_password(payload.new_password)
     user.must_change_password = False
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.patch("/me/theme", response_model=UserOut)
+def set_theme(payload: ThemeIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    user.theme = payload.theme
     db.commit()
     db.refresh(user)
     return user

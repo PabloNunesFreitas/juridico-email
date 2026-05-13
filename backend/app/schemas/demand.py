@@ -25,6 +25,17 @@ class StatusIn(BaseModel):
     status: DemandStatus
 
 
+class AttachmentOut(BaseModel):
+    id: int
+    filename: str
+    mime_type: Optional[str] = None
+    size: Optional[int] = None
+    external_attachment_id: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class MessageOut(BaseModel):
     id: int
     direction: str
@@ -35,6 +46,19 @@ class MessageOut(BaseModel):
     body_html: Optional[str] = None
     received_at: datetime
     has_attachments: bool
+    attachments: List[AttachmentOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+class CommentOut(BaseModel):
+    id: int
+    demand_id: int
+    user_id: int
+    user_name: str
+    content: str
+    created_at: datetime
 
     class Config:
         from_attributes = True

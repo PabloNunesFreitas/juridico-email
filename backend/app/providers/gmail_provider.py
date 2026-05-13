@@ -273,6 +273,18 @@ class GmailEmailProvider(EmailProvider):
         resp.raise_for_status()
         return [self._to_provider_msg(m) for m in resp.json().get("messages", [])]
 
+    def get_attachment(self, message_id: str, attachment_id: str) -> bytes:
+        """Baixa os dados de um anexo e retorna os bytes decodificados."""
+        _rate_limit()
+        resp = self._client.get(
+            f"{GMAIL_BASE}/messages/{message_id}/attachments/{attachment_id}",
+            headers=self._headers(),
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data", "")
+        return _b64url_decode(data)
+
     def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None) -> str:
         """Envia resposta por e-mail e retorna o external_id da mensagem enviada."""
         import email.mime.text as _mime_text

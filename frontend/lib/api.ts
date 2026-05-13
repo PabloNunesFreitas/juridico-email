@@ -3,7 +3,7 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://juridico-email.onrender.com";
 
 export type Role = "ADMIN" | "USER";
-export interface User { id: number; name: string; email: string; role: Role; active: boolean; must_change_password: boolean; created_at: string; }
+export interface User { id: number; name: string; email: string; role: Role; active: boolean; must_change_password: boolean; theme: string | null; created_at: string; }
 export interface UserCreated extends User { temp_password: string; }
 export interface UserMini { id: number; name: string; email: string; }
 export interface EmailAccount {
@@ -37,6 +37,13 @@ export interface Demand {
   last_message_at: string;
   created_at: string;
 }
+export interface Attachment {
+  id: number;
+  filename: string;
+  mime_type: string | null;
+  size: number | null;
+  external_attachment_id: string | null;
+}
 export interface Message {
   id: number;
   direction: string;
@@ -47,6 +54,23 @@ export interface Message {
   body_html: string | null;
   received_at: string;
   has_attachments: boolean;
+  attachments: Attachment[];
+}
+export interface Comment {
+  id: number;
+  demand_id: number;
+  user_id: number;
+  user_name: string;
+  content: string;
+  created_at: string;
+}
+export interface Notification {
+  id: number;
+  demand_id: number | null;
+  type: string;
+  message: string;
+  read: boolean;
+  created_at: string;
 }
 export interface DemandDetail extends Demand { messages: Message[]; }
 export interface AuditLog {
@@ -160,6 +184,21 @@ export const api = {
   renameFolder: (id: number, name: string) => request<Folder>(`/api/v1/folders/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   deleteFolder: (id: number) => request<void>(`/api/v1/folders/${id}`, { method: "DELETE" }),
   listFolderDemands: (id: number) => request<Demand[]>(`/api/v1/folders/${id}/demands`),
+
+  listComments: (demandId: number) => request<Comment[]>(`/api/v1/demands/${demandId}/comments`),
+  addComment: (demandId: number, content: string) =>
+    request<Comment>(`/api/v1/demands/${demandId}/comments`, { method: "POST", body: JSON.stringify({ content }) }),
+
+  listNotifications: () => request<Notification[]>("/api/v1/notifications"),
+  unreadCount: () => request<{ count: number }>("/api/v1/notifications/unread-count"),
+  markAllRead: () => request<{ ok: boolean }>("/api/v1/notifications/read-all", { method: "POST" }),
+  markRead: (id: number) => request<{ ok: boolean }>(`/api/v1/notifications/${id}/read`, { method: "PATCH" }),
+
+  setTheme: (theme: string) =>
+    request<User>("/api/v1/auth/me/theme", { method: "PATCH", body: JSON.stringify({ theme }) }),
+
+  downloadAttachment: (messageId: number, attId: number) =>
+    `${API_URL}/api/v1/messages/${messageId}/attachments/${attId}/download`,
 
   listLogs: (params: Record<string, any> = {}) => {
     const qs = new URLSearchParams(

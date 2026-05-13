@@ -41,6 +41,7 @@ class UserUpdate(BaseModel):
 class UserOut(UserBase):
     id: int
     must_change_password: bool
+    theme: Optional[str] = "cinza"
     created_at: datetime
 
     class Config:

@@ -21,5 +21,6 @@ class User(Base):
     role = Column(Enum(UserRole), nullable=False, default=UserRole.USER)
     active = Column(Boolean, nullable=False, default=True)
     must_change_password = Column(Boolean, nullable=False, default=False)
+    theme = Column(String(20), nullable=True, default="cinza")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

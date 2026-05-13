@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
-import { api, Demand, DemandDetail, EmailAccount, User, STATUSES, BANKS } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { api, Comment, Demand, DemandDetail, EmailAccount, User, STATUSES, BANKS } from "@/lib/api";
 import { ActionModal } from "@/components/ActionModal";
 import { toast } from "@/lib/toast";
 
@@ -41,6 +41,12 @@ export function DemandView({ source, title }: Props) {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareUserId, setShareUserId] = useState("");
   const [shareNote, setShareNote] = useState("");
+
+  // Comentários
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState("");
+  const [commentSending, setCommentSending] = useState(false);
+  const commentsEndRef = useRef<HTMLDivElement>(null);
 
   // Seleção múltipla
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
@@ -168,6 +174,21 @@ export function DemandView({ source, title }: Props) {
     setReplyText("");
     setReplyError(null);
     setReplySuccess(false);
+    setShareOpen(false);
+    setArchiveOpen(false);
+    api.listComments(d.id).then(setComments).catch(() => setComments([]));
+  }
+
+  async function sendComment() {
+    if (!selected || !newComment.trim()) return;
+    setCommentSending(true);
+    try {
+      const c = await api.addComment(selected.id, newComment.trim());
+      setComments(prev => [...prev, c]);
+      setNewComment("");
+      setTimeout(() => commentsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    } catch (e: any) { toast(e.message, "error"); }
+    setCommentSending(false);
   }
 
   async function sendReply() {
@@ -602,9 +623,61 @@ export function DemandView({ source, title }: Props) {
                     </div>
                     <div className="text-sm font-medium mt-1">{m.subject}</div>
                     <pre className="text-sm whitespace-pre-wrap mt-2 text-gray-800 font-sans">{m.body_text || ""}</pre>
-                    {m.has_attachments && <div className="text-xs text-blue-600 mt-2">📎 Possui anexos</div>}
+                    {m.attachments && m.attachments.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {m.attachments.map(att => (
+                          <a
+                            key={att.id}
+                            href={api.downloadAttachment(m.id, att.id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded mr-1"
+                          >
+                            📎 {att.filename}
+                            {att.size ? <span className="text-gray-400">({Math.round(att.size / 1024)}KB)</span> : null}
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
+              </div>
+
+              {/* Conversa interna */}
+              <div className="mt-6 border-t pt-4">
+                <div className="text-xs text-gray-500 uppercase font-medium mb-2">Conversa Interna</div>
+                <div className="space-y-2 max-h-52 overflow-y-auto mb-3">
+                  {comments.length === 0 && (
+                    <p className="text-xs text-gray-400">Nenhum comentário ainda.</p>
+                  )}
+                  {comments.map(c => (
+                    <div key={c.id} className="bg-gray-50 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-xs font-semibold text-gray-700">{c.user_name}</span>
+                        <span className="text-xs text-gray-400">{new Date(c.created_at).toLocaleString()}</span>
+                      </div>
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap">{c.content}</p>
+                    </div>
+                  ))}
+                  <div ref={commentsEndRef} />
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    className="input flex-1 text-sm"
+                    placeholder="Comentário interno... (@usuário para mencionar)"
+                    value={newComment}
+                    onChange={e => setNewComment(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendComment(); } }}
+                    disabled={commentSending}
+                  />
+                  <button
+                    className="btn-secondary text-sm px-3 disabled:opacity-50"
+                    onClick={sendComment}
+                    disabled={commentSending || !newComment.trim()}
+                  >
+                    {commentSending ? "..." : "Enviar"}
+                  </button>
+                </div>
               </div>
 
               {/* Caixa de resposta */}

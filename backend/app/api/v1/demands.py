@@ -7,12 +7,19 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.models.comment import Comment
 from app.models.demand import Bank, Demand, DemandStatus
 from app.models.demand_share import DemandShare
 from app.models.folder import Folder
 from app.models.message import Message
+from app.models.attachment import Attachment
+from app.models.notification import Notification
 from app.models.user import User, UserRole
-from app.schemas.demand import AssignIn, DemandDetail, DemandOut, DemandUpdate, ReplyIn, StatusIn
+from app.schemas.demand import AssignIn, CommentOut, DemandDetail, DemandOut, DemandUpdate, ReplyIn, StatusIn
+
+
+class CommentIn(BaseModel):
+    content: str
 
 class ShareIn(BaseModel):
     user_id: int
@@ -118,7 +125,12 @@ def shared_demands(db: Session = Depends(get_db), user: User = Depends(get_curre
 
 @router.get("/{demand_id}", response_model=DemandDetail)
 def get_demand(demand_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    demand = _base_query(db).options(joinedload(Demand.messages)).filter(Demand.id == demand_id).first()
+    demand = (
+        _base_query(db)
+        .options(joinedload(Demand.messages).joinedload(Message.attachments))
+        .filter(Demand.id == demand_id)
+        .first()
+    )
     if not demand:
         raise HTTPException(status_code=404, detail="Demanda não encontrada")
     if user.role != UserRole.ADMIN and demand.assigned_user_id not in (None, user.id):
@@ -346,8 +358,92 @@ def share_demand(
         note=payload.note,
     )
     db.add(share)
+    subject_preview = (demand.subject or demand.sender_email or "")[:80]
+    db.add(Notification(
+        user_id=payload.user_id,
+        demand_id=demand_id,
+        type="DEMAND_SHARED",
+        message=f"{user.name} compartilhou uma demanda com você: {subject_preview}",
+    ))
     db.commit()
     return {"ok": True}
+
+
+@router.get("/{demand_id}/comments", response_model=List[CommentOut])
+def list_comments(demand_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    demand = db.query(Demand).filter(Demand.id == demand_id).first()
+    if not demand:
+        raise HTTPException(status_code=404, detail="Demanda não encontrada")
+    if user.role != UserRole.ADMIN and demand.assigned_user_id != user.id:
+        shared = db.query(DemandShare).filter(
+            DemandShare.demand_id == demand_id, DemandShare.shared_with_id == user.id
+        ).first()
+        if not shared:
+            raise HTTPException(status_code=403, detail="Sem permissão")
+    comments = db.query(Comment).filter(Comment.demand_id == demand_id).order_by(Comment.created_at.asc()).all()
+    return [
+        CommentOut(
+            id=c.id, demand_id=c.demand_id, user_id=c.user_id,
+            user_name=c.user.name if c.user else "—",
+            content=c.content, created_at=c.created_at,
+        )
+        for c in comments
+    ]
+
+
+@router.post("/{demand_id}/comments", response_model=CommentOut)
+def add_comment(
+    demand_id: int,
+    payload: CommentIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not payload.content.strip():
+        raise HTTPException(status_code=400, detail="Comentário vazio")
+    demand = db.query(Demand).filter(Demand.id == demand_id).first()
+    if not demand:
+        raise HTTPException(status_code=404, detail="Demanda não encontrada")
+    if user.role != UserRole.ADMIN and demand.assigned_user_id != user.id:
+        shared = db.query(DemandShare).filter(
+            DemandShare.demand_id == demand_id, DemandShare.shared_with_id == user.id
+        ).first()
+        if not shared:
+            raise HTTPException(status_code=403, detail="Sem permissão para comentar")
+    comment = Comment(demand_id=demand_id, user_id=user.id, content=payload.content.strip())
+    db.add(comment)
+
+    subject_preview = (demand.subject or demand.sender_email or "")[:60]
+    notified: set = {user.id}
+    if demand.assigned_user_id and demand.assigned_user_id not in notified:
+        db.add(Notification(
+            user_id=demand.assigned_user_id, demand_id=demand_id, type="COMMENT_ADDED",
+            message=f"{user.name} comentou em: {subject_preview}",
+        ))
+        notified.add(demand.assigned_user_id)
+    prev_commenters = db.query(Comment.user_id).filter(
+        Comment.demand_id == demand_id, Comment.user_id != user.id
+    ).distinct().all()
+    for (uid,) in prev_commenters:
+        if uid not in notified:
+            db.add(Notification(
+                user_id=uid, demand_id=demand_id, type="COMMENT_ADDED",
+                message=f"{user.name} comentou em: {subject_preview}",
+            ))
+            notified.add(uid)
+    shared_users = db.query(DemandShare.shared_with_id).filter(DemandShare.demand_id == demand_id).all()
+    for (uid,) in shared_users:
+        if uid not in notified:
+            db.add(Notification(
+                user_id=uid, demand_id=demand_id, type="COMMENT_ADDED",
+                message=f"{user.name} comentou em: {subject_preview}",
+            ))
+            notified.add(uid)
+    db.commit()
+    db.refresh(comment)
+    return CommentOut(
+        id=comment.id, demand_id=comment.demand_id, user_id=comment.user_id,
+        user_name=user.name, content=comment.content, created_at=comment.created_at,
+    )
 
 
 @router.delete("/{demand_id}/share/{share_id}")

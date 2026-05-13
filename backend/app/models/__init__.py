@@ -8,6 +8,8 @@ from app.models.assignment_rule import AssignmentRule
 from app.models.audit_log import AuditLog
 from app.models.app_config import AppConfig
 from app.models.demand_share import DemandShare
+from app.models.notification import Notification
+from app.models.comment import Comment
 
 __all__ = [
     "User", "UserRole",
@@ -20,4 +22,6 @@ __all__ = [
     "AuditLog",
     "AppConfig",
     "DemandShare",
+    "Notification",
+    "Comment",
 ]
