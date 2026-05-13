@@ -2,9 +2,10 @@
 import { useEffect, useState } from "react";
 import { api, Demand, DemandDetail, EmailAccount, User, STATUSES, BANKS } from "@/lib/api";
 import { ActionModal } from "@/components/ActionModal";
+import { toast } from "@/lib/toast";
 
 interface Props {
-  source: "all" | "my" | "unassigned";
+  source: "all" | "my" | "unassigned" | "shared";
   title: string;
 }
 
@@ -35,6 +36,11 @@ export function DemandView({ source, title }: Props) {
   // Arquivo morto
   const [folders, setFolders] = useState<import("@/lib/api").Folder[]>([]);
   const [archiveOpen, setArchiveOpen] = useState(false);
+
+  // Compartilhar
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareUserId, setShareUserId] = useState("");
+  const [shareNote, setShareNote] = useState("");
 
   // Seleção múltipla
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
@@ -103,6 +109,7 @@ export function DemandView({ source, title }: Props) {
       let data: Demand[];
       if (source === "my") data = await api.myDemands(params);
       else if (source === "unassigned") data = await api.unassignedDemands(params);
+      else if (source === "shared") data = await api.sharedDemands();
       else data = await api.listDemands(params);
       setDemands(data);
     } catch (e: any) {
@@ -187,6 +194,19 @@ export function DemandView({ source, title }: Props) {
     await loadList();
   }
 
+  async function handleShare() {
+    if (!selected || !shareUserId) return;
+    try {
+      await api.shareDemand(selected.id, Number(shareUserId), shareNote || undefined);
+      setShareOpen(false);
+      setShareUserId("");
+      setShareNote("");
+      toast("Demanda compartilhada com sucesso!", "success");
+    } catch (e: any) {
+      toast(e.message, "error");
+    }
+  }
+
   const isAdmin = me?.role === "ADMIN";
 
   async function handleModalConfirm() {
@@ -202,9 +222,13 @@ export function DemandView({ source, title }: Props) {
       }
       setModal(null);
       await refreshSelected();
+      if (modal === "assume") toast("Demanda assumida!", "success");
+      else if (modal === "unassign") toast("Responsável removido.", "info");
+      else if (modal === "assign") toast(`Demanda atribuída a ${assignTargetName}.`, "success");
     } catch (err: any) {
       setModal(null);
       setError(err.message);
+      toast(err.message, "error");
     }
   }
 
@@ -487,6 +511,45 @@ export function DemandView({ source, title }: Props) {
                   {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
 
+                {/* Compartilhar */}
+                <div className="relative">
+                  <button
+                    className="btn-secondary text-xs"
+                    onClick={() => { setShareOpen(v => !v); setArchiveOpen(false); }}
+                  >
+                    ↗ Compartilhar
+                  </button>
+                  {shareOpen && (
+                    <div className="absolute left-0 top-full mt-1 bg-white border rounded shadow-lg z-20 w-64 p-3 space-y-2">
+                      <p className="text-xs font-medium text-gray-700">Compartilhar com:</p>
+                      <select
+                        className="input text-sm"
+                        value={shareUserId}
+                        onChange={e => setShareUserId(e.target.value)}
+                      >
+                        <option value="">Selecionar usuário...</option>
+                        {users.filter(u => u.active && u.id !== me?.id).map(u => (
+                          <option key={u.id} value={u.id}>{u.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        className="input text-sm"
+                        placeholder="Mensagem (opcional)"
+                        value={shareNote}
+                        onChange={e => setShareNote(e.target.value)}
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <button className="btn-secondary text-xs" onClick={() => setShareOpen(false)}>Cancelar</button>
+                        <button
+                          className="btn-primary text-xs"
+                          disabled={!shareUserId}
+                          onClick={handleShare}
+                        >Compartilhar</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Arquivar */}
                 {selected.folder_id ? (
                   <button
@@ -497,7 +560,7 @@ export function DemandView({ source, title }: Props) {
                   <div className="relative">
                     <button
                       className="btn-secondary text-xs"
-                      onClick={() => { setArchiveOpen(v => !v); }}
+                      onClick={() => { setArchiveOpen(v => !v); setShareOpen(false); }}
                     >📁 Arquivar</button>
                     {archiveOpen && (
                       <div className="absolute right-0 top-full mt-1 bg-white border rounded shadow-lg z-20 w-52 py-1">

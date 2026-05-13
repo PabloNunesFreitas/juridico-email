@@ -1,27 +1,50 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 type Status = Awaited<ReturnType<typeof api.syncStatus>>;
 
 export function SyncBanner() {
   const [s, setS] = useState<Status | null>(null);
+  const lastFinishedAtRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
 
   useEffect(() => {
     let alive = true;
-    let lastFinishedAt: string | null = null;
     async function tick() {
       try {
         const data = await api.syncStatus();
         if (!alive) return;
-        // Só mostra se está rodando OU se acabou nos últimos 8s
         const now = Date.now();
-        const finishedRecently = data.finished_at && now - new Date(data.finished_at).getTime() < 8000 && data.finished_at !== lastFinishedAt;
+        const justFinished =
+          data.finished_at &&
+          data.finished_at !== lastFinishedAtRef.current &&
+          now - new Date(data.finished_at).getTime() < 8000;
+        const finishedRecently =
+          data.finished_at && now - new Date(data.finished_at).getTime() < 8000;
+
         if (data.running || finishedRecently) {
           setS(data);
-          if (data.finished_at && !data.running) lastFinishedAt = data.finished_at;
         } else {
           setS(null);
+        }
+
+        if (justFinished && !data.running) {
+          lastFinishedAtRef.current = data.finished_at!;
+          if (data.new_demands > 0) {
+            toast(`${data.new_demands} nova(s) demanda(s) recebida(s)`, "info");
+            if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+              new Notification("Novos e-mails", {
+                body: `${data.new_demands} nova(s) demanda(s) chegaram`,
+              });
+            }
+          }
         }
       } catch {}
     }
@@ -56,13 +79,9 @@ export function SyncBanner() {
           </>
         )
       ) : s.error ? (
-        <>
-          <span className="text-red-700">⚠ Erro na sincronização: {s.error}</span>
-        </>
+        <span className="text-red-700">⚠ Erro na sincronização: {s.error}</span>
       ) : (
-        <>
-          <span className="text-green-700">✓ Sincronização concluída — {s.new_messages} mensagens novas, {s.new_demands} demandas.</span>
-        </>
+        <span className="text-green-700">✓ Sincronização concluída — {s.new_messages} mensagens novas, {s.new_demands} demandas.</span>
       )}
     </div>
   );

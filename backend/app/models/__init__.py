@@ -7,6 +7,7 @@ from app.models.attachment import Attachment
 from app.models.assignment_rule import AssignmentRule
 from app.models.audit_log import AuditLog
 from app.models.app_config import AppConfig
+from app.models.demand_share import DemandShare
 
 __all__ = [
     "User", "UserRole",
@@ -18,4 +19,5 @@ __all__ = [
     "AssignmentRule",
     "AuditLog",
     "AppConfig",
+    "DemandShare",
 ]

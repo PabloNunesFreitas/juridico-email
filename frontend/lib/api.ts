@@ -125,6 +125,11 @@ export const api = {
     ).toString();
     return request<Demand[]>(`/api/v1/demands/my${qs ? "?" + qs : ""}`);
   },
+  sharedDemands: () => request<Demand[]>("/api/v1/demands/shared"),
+  shareDemand: (id: number, user_id: number, note?: string) =>
+    request<{ ok: boolean }>(`/api/v1/demands/${id}/share`, { method: "POST", body: JSON.stringify({ user_id, note }) }),
+  unshareDemand: (id: number, share_id: number) =>
+    request<{ ok: boolean }>(`/api/v1/demands/${id}/share/${share_id}`, { method: "DELETE" }),
   unassignedDemands: (params: Record<string, any> = {}) => {
     const qs = new URLSearchParams(
       Object.entries(params).filter(([_, v]) => v !== undefined && v !== "" && v !== null).map(([k, v]) => [k, String(v)])

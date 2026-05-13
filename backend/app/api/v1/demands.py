@@ -2,15 +2,21 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.demand import Bank, Demand, DemandStatus
+from app.models.demand_share import DemandShare
 from app.models.folder import Folder
 from app.models.message import Message
 from app.models.user import User, UserRole
 from app.schemas.demand import AssignIn, DemandDetail, DemandOut, DemandUpdate, ReplyIn, StatusIn
+
+class ShareIn(BaseModel):
+    user_id: int
+    note: Optional[str] = None
 from app.schemas.log import AuditLogOut
 from app.models.audit_log import AuditLog
 from app.services import demand_service
@@ -102,13 +108,25 @@ def unassigned_demands(
     return query.order_by(Demand.last_message_at.desc()).limit(2000).all()
 
 
+@router.get("/shared", response_model=List[DemandOut])
+def shared_demands(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    ids = [r[0] for r in db.query(DemandShare.demand_id).filter(DemandShare.shared_with_id == user.id).all()]
+    if not ids:
+        return []
+    return _base_query(db).filter(Demand.id.in_(ids)).order_by(Demand.last_message_at.desc()).all()
+
+
 @router.get("/{demand_id}", response_model=DemandDetail)
 def get_demand(demand_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     demand = _base_query(db).options(joinedload(Demand.messages)).filter(Demand.id == demand_id).first()
     if not demand:
         raise HTTPException(status_code=404, detail="Demanda não encontrada")
     if user.role != UserRole.ADMIN and demand.assigned_user_id not in (None, user.id):
-        raise HTTPException(status_code=403, detail="Sem permissão para esta demanda")
+        shared = db.query(DemandShare).filter(
+            DemandShare.demand_id == demand_id, DemandShare.shared_with_id == user.id
+        ).first()
+        if not shared:
+            raise HTTPException(status_code=403, detail="Sem permissão para esta demanda")
     return demand
 
 
@@ -293,3 +311,57 @@ def demand_logs(demand_id: int, db: Session = Depends(get_db), user: User = Depe
     if user.role != UserRole.ADMIN and demand.assigned_user_id != user.id:
         raise HTTPException(status_code=403, detail="Sem permissão")
     return db.query(AuditLog).filter(AuditLog.demand_id == demand_id).order_by(AuditLog.created_at.desc()).all()
+
+
+@router.post("/{demand_id}/share")
+def share_demand(
+    demand_id: int,
+    payload: ShareIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    demand = db.query(Demand).filter(Demand.id == demand_id).first()
+    if not demand:
+        raise HTTPException(status_code=404, detail="Demanda não encontrada")
+    if user.role != UserRole.ADMIN and demand.assigned_user_id != user.id:
+        shared = db.query(DemandShare).filter(
+            DemandShare.demand_id == demand_id, DemandShare.shared_with_id == user.id
+        ).first()
+        if not shared:
+            raise HTTPException(status_code=403, detail="Sem permissão")
+    target = db.query(User).filter(User.id == payload.user_id, User.active.is_(True)).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    if payload.user_id == user.id:
+        raise HTTPException(status_code=400, detail="Não é possível compartilhar consigo mesmo")
+    existing = db.query(DemandShare).filter(
+        DemandShare.demand_id == demand_id, DemandShare.shared_with_id == payload.user_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Já compartilhado com este usuário")
+    share = DemandShare(
+        demand_id=demand_id,
+        shared_by_id=user.id,
+        shared_with_id=payload.user_id,
+        note=payload.note,
+    )
+    db.add(share)
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{demand_id}/share/{share_id}")
+def unshare_demand(
+    demand_id: int,
+    share_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    share = db.query(DemandShare).filter(DemandShare.id == share_id, DemandShare.demand_id == demand_id).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Compartilhamento não encontrado")
+    if share.shared_by_id != user.id and user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Sem permissão")
+    db.delete(share)
+    db.commit()
+    return {"ok": True}
