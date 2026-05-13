@@ -79,6 +79,21 @@ export function DemandView({ source, title }: Props) {
     setBulkLoading(false);
   }
 
+  async function bulkUnassign() {
+    if (!confirm(`Remover responsável de ${checkedIds.size} demanda(s) selecionada(s)?`)) return;
+    setBulkLoading(true);
+    const ids = [...checkedIds];
+    const errors: string[] = [];
+    await Promise.all(ids.map(async id => {
+      try { await api.unassignDemand(id, false, false); }
+      catch (e: any) { errors.push(e.message); }
+    }));
+    setCheckedIds(new Set());
+    await loadList();
+    if (errors.length) setError(errors[0]);
+    setBulkLoading(false);
+  }
+
   async function loadList() {
     try {
       const params: Record<string, any> = { status: filterStatus || undefined, q: search.trim() || undefined };
@@ -337,17 +352,26 @@ export function DemandView({ source, title }: Props) {
                 Assumir
               </button>
               {isAdmin && (
-                <select
-                  className="text-gray-800 text-xs px-2 py-0.5 rounded border-0 disabled:opacity-50"
-                  value={bulkAssignUserId}
-                  disabled={bulkLoading}
-                  onChange={(e) => { if (e.target.value) { setBulkAssignUserId(e.target.value); bulkAssign(Number(e.target.value)); } }}
-                >
-                  <option value="">Atribuir a...</option>
-                  {users.filter(u => u.active).map(u => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
-                </select>
+                <>
+                  <select
+                    className="text-gray-800 text-xs px-2 py-0.5 rounded border-0 disabled:opacity-50"
+                    value={bulkAssignUserId}
+                    disabled={bulkLoading}
+                    onChange={(e) => { if (e.target.value) { setBulkAssignUserId(e.target.value); bulkAssign(Number(e.target.value)); } }}
+                  >
+                    <option value="">Atribuir a...</option>
+                    {users.filter(u => u.active).map(u => (
+                      <option key={u.id} value={u.id}>{u.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-medium hover:bg-red-200 disabled:opacity-50"
+                    onClick={bulkUnassign}
+                    disabled={bulkLoading}
+                  >
+                    Remover responsável
+                  </button>
+                </>
               )}
               <button
                 className="ml-auto text-blue-200 hover:text-white text-xs"
