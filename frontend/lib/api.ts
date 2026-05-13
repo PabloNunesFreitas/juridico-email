@@ -14,6 +14,14 @@ export interface EmailAccount {
   active: boolean;
 }
 
+export interface Folder {
+  id: number;
+  name: string;
+  user_id: number;
+  created_at: string;
+  demand_count: number;
+}
+
 export interface Demand {
   id: number;
   sender_email: string;
@@ -25,6 +33,7 @@ export interface Demand {
   status: string;
   assigned_user: UserMini | null;
   email_account: { id: number; email_address: string; color: string } | null;
+  folder_id: number | null;
   last_message_at: string;
   created_at: string;
 }
@@ -136,6 +145,16 @@ export const api = {
   demandLogs: (id: number) => request<AuditLog[]>(`/api/v1/demands/${id}/logs`),
   replyDemand: (id: number, body_text: string) =>
     request<DemandDetail>(`/api/v1/demands/${id}/reply`, { method: "POST", body: JSON.stringify({ body_text }) }),
+  archiveDemand: (id: number, folder_id: number) =>
+    request<Demand>(`/api/v1/demands/${id}/archive?folder_id=${folder_id}`, { method: "POST" }),
+  unarchiveDemand: (id: number) =>
+    request<Demand>(`/api/v1/demands/${id}/unarchive`, { method: "POST" }),
+
+  listFolders: () => request<Folder[]>("/api/v1/folders"),
+  createFolder: (name: string) => request<Folder>("/api/v1/folders", { method: "POST", body: JSON.stringify({ name }) }),
+  renameFolder: (id: number, name: string) => request<Folder>(`/api/v1/folders/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+  deleteFolder: (id: number) => request<void>(`/api/v1/folders/${id}`, { method: "DELETE" }),
+  listFolderDemands: (id: number) => request<Demand[]>(`/api/v1/folders/${id}/demands`),
 
   listLogs: (params: Record<string, any> = {}) => {
     const qs = new URLSearchParams(

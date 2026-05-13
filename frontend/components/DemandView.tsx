@@ -32,6 +32,10 @@ export function DemandView({ source, title }: Props) {
   const [replyError, setReplyError] = useState<string | null>(null);
   const [replySuccess, setReplySuccess] = useState(false);
 
+  // Arquivo morto
+  const [folders, setFolders] = useState<import("@/lib/api").Folder[]>([]);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+
   // Seleção múltipla
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -133,6 +137,7 @@ export function DemandView({ source, title }: Props) {
     api.me().then(setMe).catch(() => {});
     api.listUsers().then(setUsers).catch(() => {});
     api.listAccounts().then(setAccounts).catch(() => {});
+    api.listFolders().then(setFolders).catch(() => {});
   }, []);
 
   async function open(d: Demand) {
@@ -457,6 +462,40 @@ export function DemandView({ source, title }: Props) {
                   onChange={async (e) => { await api.changeStatus(selected.id, e.target.value); await refreshSelected(); }}>
                   {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
+
+                {/* Arquivar */}
+                {selected.folder_id ? (
+                  <button
+                    className="btn-secondary text-xs"
+                    onClick={async () => { await api.unarchiveDemand(selected.id); await refreshSelected(); await loadList(); }}
+                  >↩ Desarquivar</button>
+                ) : (
+                  <div className="relative">
+                    <button
+                      className="btn-secondary text-xs"
+                      onClick={() => { setArchiveOpen(v => !v); }}
+                    >📁 Arquivar</button>
+                    {archiveOpen && (
+                      <div className="absolute right-0 top-full mt-1 bg-white border rounded shadow-lg z-20 w-52 py-1">
+                        {folders.length === 0 && (
+                          <p className="px-3 py-2 text-xs text-gray-400">Crie pastas em Arquivo Morto primeiro.</p>
+                        )}
+                        {folders.map(f => (
+                          <button
+                            key={f.id}
+                            className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50"
+                            onClick={async () => {
+                              setArchiveOpen(false);
+                              await api.archiveDemand(selected.id, f.id);
+                              await loadList();
+                              setSelected(null);
+                            }}
+                          >📁 {f.name}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="mt-5 space-y-3">

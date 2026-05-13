@@ -1,5 +1,6 @@
 from app.models.user import User, UserRole
 from app.models.email_account import EmailAccount
+from app.models.folder import Folder
 from app.models.demand import Demand, DemandStatus, Bank
 from app.models.message import Message
 from app.models.attachment import Attachment
@@ -10,6 +11,7 @@ from app.models.app_config import AppConfig
 __all__ = [
     "User", "UserRole",
     "EmailAccount",
+    "Folder",
     "Demand", "DemandStatus", "Bank",
     "Message",
     "Attachment",

@@ -8,6 +8,7 @@ const items = [
   { href: "/inbox", label: "Caixa de Entrada", admin: true },
   { href: "/my-demands", label: "Minhas Solicitações" },
   { href: "/unassigned", label: "Não atribuídas" },
+  { href: "/archive", label: "Arquivo Morto" },
   { href: "/users", label: "Usuários", admin: true },
   { href: "/logs", label: "Logs", admin: true },
   { href: "/settings", label: "Configurações", admin: true },

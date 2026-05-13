@@ -69,6 +69,7 @@ class DemandOut(BaseModel):
     status: DemandStatus
     assigned_user: Optional[UserMini] = None
     email_account: Optional[InboxAccountMini] = None
+    folder_id: Optional[int] = None
     last_message_at: datetime
     created_at: datetime
 

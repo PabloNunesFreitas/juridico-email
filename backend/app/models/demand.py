@@ -45,11 +45,13 @@ class Demand(Base):
     status = Column(Enum(DemandStatus), nullable=False, default=DemandStatus.CAIXA_ENTRADA)
     assigned_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     email_account_id = Column(Integer, ForeignKey("email_accounts.id"), nullable=True, index=True)
+    folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     last_message_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     assigned_user = relationship("User", foreign_keys=[assigned_user_id])
     email_account = relationship("EmailAccount", foreign_keys=[email_account_id])
+    folder = relationship("Folder", back_populates="demands", foreign_keys=[folder_id])
     messages = relationship("Message", back_populates="demand", cascade="all, delete-orphan", order_by="Message.received_at")
 

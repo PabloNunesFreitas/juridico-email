@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.demand import Bank, Demand, DemandStatus
+from app.models.folder import Folder
 from app.models.message import Message
 from app.models.user import User, UserRole
 from app.schemas.demand import AssignIn, DemandDetail, DemandOut, DemandUpdate, ReplyIn, StatusIn
@@ -244,6 +245,44 @@ def reply_demand(
         .filter(Demand.id == demand_id)
         .first()
     )
+
+
+@router.post("/{demand_id}/archive", response_model=DemandOut)
+def archive_demand(
+    demand_id: int,
+    folder_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Move a demanda para uma pasta do arquivo morto."""
+    demand = db.query(Demand).filter(Demand.id == demand_id).first()
+    if not demand:
+        raise HTTPException(status_code=404, detail="Demanda não encontrada")
+    if user.role != UserRole.ADMIN and demand.assigned_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Sem permissão")
+    folder = db.query(Folder).filter(Folder.id == folder_id, Folder.user_id == user.id).first()
+    if not folder:
+        raise HTTPException(status_code=404, detail="Pasta não encontrada")
+    demand.folder_id = folder_id
+    db.commit()
+    return _base_query(db).filter(Demand.id == demand_id).first()
+
+
+@router.post("/{demand_id}/unarchive", response_model=DemandOut)
+def unarchive_demand(
+    demand_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Remove a demanda do arquivo morto, voltando para a caixa de entrada."""
+    demand = db.query(Demand).filter(Demand.id == demand_id).first()
+    if not demand:
+        raise HTTPException(status_code=404, detail="Demanda não encontrada")
+    if user.role != UserRole.ADMIN and demand.assigned_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Sem permissão")
+    demand.folder_id = None
+    db.commit()
+    return _base_query(db).filter(Demand.id == demand_id).first()
 
 
 @router.get("/{demand_id}/logs", response_model=List[AuditLogOut])
