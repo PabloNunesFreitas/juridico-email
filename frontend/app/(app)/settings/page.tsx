@@ -138,6 +138,8 @@ function Accordion({ steps }: { steps: { title: string; body: React.ReactNode }[
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+type GmailFlow = null | "home" | "update-pick" | "wizard";
+
 export default function SettingsPage() {
   const [provider, setProvider] = useState<Provider>("mock");
   const [emailAddr, setEmailAddr] = useState("");
@@ -146,8 +148,13 @@ export default function SettingsPage() {
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [busy, setBusy] = useState(false);
 
-  // Modal para adicionar nova conta com credenciais opcionais
-  const [addModal, setAddModal] = useState<{ provider: "gmail" | "outlook" } | null>(null);
+  // Modal Gmail wizard
+  const [gmailFlow, setGmailFlow] = useState<GmailFlow>(null);
+  const [gmailWizardStep, setGmailWizardStep] = useState(0);
+  const [gmailWizardFor, setGmailWizardFor] = useState<"add" | "redo">("add");
+
+  // Modal para adicionar nova conta com credenciais opcionais (Outlook)
+  const [addModal, setAddModal] = useState<{ provider: "outlook" } | null>(null);
   const [addUseCustom, setAddUseCustom] = useState(false);
   const [addClientId, setAddClientId] = useState("");
   const [addClientSecret, setAddClientSecret] = useState("");
@@ -260,7 +267,31 @@ export default function SettingsPage() {
     }
   }
 
-  async function openAddModal(prov: "gmail" | "outlook") {
+  function openGmailWizard(intent: "add" | "redo") {
+    setGmailWizardFor(intent);
+    setGmailWizardStep(0);
+    setGmailFlow("wizard");
+  }
+
+  async function finishGmailWizard() {
+    if (!gmailClientId.trim()) { flash("Preencha o Client ID.", "red"); return; }
+    if (!gmailClientSecret.trim() && !gmailSecretSet) { flash("Preencha o Client Secret.", "red"); return; }
+    // Salva credenciais e conecta
+    try {
+      await api.saveGmailCreds({ client_id: gmailClientId, client_secret: gmailClientSecret });
+      setGmailSavedClientId(gmailClientId.trim());
+      setGmailSecretSet(true); setGmailCredSaved(true);
+    } catch (e: any) { flash(e.message, "red"); return; }
+    setGmailFlow(null);
+    await connectWithCredentials("gmail", gmailClientId.trim(), gmailClientSecret || undefined);
+  }
+
+  async function reconnectGmail() {
+    setGmailFlow(null);
+    await connectWithCredentials("gmail", gmailClientId || undefined, undefined);
+  }
+
+  async function openAddModal(prov: "outlook") {
     setAddModal({ provider: prov });
     setAddUseCustom(false);
     setAddClientId("");
@@ -269,15 +300,8 @@ export default function SettingsPage() {
 
   async function confirmAddAccount() {
     if (!addModal) return;
-    if (addUseCustom && (!addClientId.trim() || !addClientSecret.trim())) {
-      flash("Preencha Client ID e Client Secret.", "red"); return;
-    }
     setAddModal(null);
-    await connectWithCredentials(
-      addModal.provider,
-      addUseCustom ? addClientId.trim() : undefined,
-      addUseCustom ? addClientSecret.trim() : undefined,
-    );
+    await connectWithCredentials("outlook", undefined, undefined);
   }
 
   async function removeAccount(acc: EmailAccount) {
@@ -388,10 +412,160 @@ export default function SettingsPage() {
       <div className="card p-4 space-y-4">
         <h2 className="font-semibold text-lg">Gmail</h2>
         <p className="text-sm text-gray-600">Conecte uma ou mais contas Gmail para receber e responder e-mails diretamente pelo sistema.</p>
-        <button className="btn-primary" onClick={() => openAddModal("gmail")} disabled={busy}>
-          + Adicionar conta Gmail
+        <button className="btn-primary" onClick={() => setGmailFlow("home")} disabled={busy}>
+          + Adicionar / Atualizar conta Gmail
         </button>
       </div>
+
+      {/* ── Modal Gmail wizard ─────────────────────────────────────────────── */}
+      {gmailFlow && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+
+            {/* Tela 1: Escolha da ação */}
+            {gmailFlow === "home" && (
+              <div className="p-6 space-y-4">
+                <h3 className="font-semibold text-lg">Conta Gmail</h3>
+                <p className="text-sm text-gray-600">O que deseja fazer?</p>
+                <div className="space-y-2">
+                  <button
+                    className="w-full text-left px-4 py-3 border rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-colors"
+                    onClick={() => openGmailWizard("add")}
+                  >
+                    <div className="font-medium text-sm">+ Adicionar nova conta</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Conectar um novo Gmail ao sistema com passo a passo</div>
+                  </button>
+                  <button
+                    className="w-full text-left px-4 py-3 border rounded-lg hover:bg-amber-50 hover:border-amber-400 transition-colors"
+                    onClick={() => setGmailFlow("update-pick")}
+                  >
+                    <div className="font-medium text-sm">↺ Atualizar conta existente</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Reconectar ou reconfigurar uma conta já vinculada</div>
+                  </button>
+                </div>
+                <div className="flex justify-end pt-2">
+                  <button className="btn-secondary" onClick={() => setGmailFlow(null)}>Fechar</button>
+                </div>
+              </div>
+            )}
+
+            {/* Tela 2: Atualizar — escolhe reconectar ou refazer */}
+            {gmailFlow === "update-pick" && (
+              <div className="p-6 space-y-4">
+                <h3 className="font-semibold text-lg">Atualizar conta Gmail</h3>
+                <p className="text-sm text-gray-600">Como deseja atualizar?</p>
+                <div className="space-y-2">
+                  <button
+                    className="w-full text-left px-4 py-3 border rounded-lg hover:bg-green-50 hover:border-green-400 transition-colors"
+                    onClick={reconnectGmail}
+                    disabled={busy}
+                  >
+                    <div className="font-medium text-sm">Reconectar conta</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Refaz a autorização usando as credenciais já salvas. Mantém todo o histórico.</div>
+                  </button>
+                  <button
+                    className="w-full text-left px-4 py-3 border rounded-lg hover:bg-amber-50 hover:border-amber-400 transition-colors"
+                    onClick={() => openGmailWizard("redo")}
+                  >
+                    <div className="font-medium text-sm">Refazer configuração completa</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Preenche novamente Client ID e Secret. Use se as credenciais expiraram ou mudaram.</div>
+                  </button>
+                </div>
+                <div className="flex justify-between pt-2">
+                  <button className="btn-secondary" onClick={() => setGmailFlow("home")}>← Voltar</button>
+                  <button className="btn-secondary" onClick={() => setGmailFlow(null)}>Fechar</button>
+                </div>
+              </div>
+            )}
+
+            {/* Tela 3: Wizard passo a passo */}
+            {gmailFlow === "wizard" && (
+              <div className="p-6 space-y-4">
+                {/* Header do wizard */}
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-medium text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+                    Passo {gmailWizardStep + 1} de {GMAIL_STEPS.length}
+                  </span>
+                  <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                    <div
+                      className="bg-blue-500 h-1.5 rounded-full transition-all"
+                      style={{ width: `${((gmailWizardStep + 1) / GMAIL_STEPS.length) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                <h3 className="font-semibold text-base">{GMAIL_STEPS[gmailWizardStep].title}</h3>
+
+                {/* Conteúdo do passo */}
+                <div className="min-h-32">
+                  {GMAIL_STEPS[gmailWizardStep].body}
+
+                  {/* No passo 2 (índice 2) mostra o redirect URI */}
+                  {gmailWizardStep === 2 && (
+                    <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-xs font-semibold text-blue-800 mb-1">URI de redirecionamento para colar no Google:</p>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs font-mono bg-white border border-blue-200 rounded px-2 py-1.5 flex-1 break-all">{redirectUri}</code>
+                        <button
+                          className="btn-secondary text-xs shrink-0"
+                          onClick={() => { navigator.clipboard.writeText(redirectUri); flash("Copiado!"); }}
+                        >Copiar</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Último passo: campos de credenciais */}
+                  {gmailWizardStep === GMAIL_STEPS.length - 1 && (
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <label className="text-xs text-gray-500 font-medium">Client ID</label>
+                        <input
+                          className="input mt-1 w-full font-mono text-sm"
+                          placeholder="xxxxxxxxxx-xxxx.apps.googleusercontent.com"
+                          value={gmailClientId}
+                          onChange={e => setGmailClientId(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 font-medium">
+                          Client Secret {gmailSecretSet && <span className="text-green-600 ml-1">✓ já configurado</span>}
+                        </label>
+                        <input
+                          className="input mt-1 w-full font-mono text-sm"
+                          type="password"
+                          placeholder={gmailSecretSet ? "••••••• (deixe vazio para manter)" : "GOCSPX-..."}
+                          value={gmailClientSecret}
+                          onChange={e => setGmailClientSecret(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Navegação */}
+                <div className="flex justify-between pt-2 border-t">
+                  <button
+                    className="btn-secondary"
+                    onClick={() => gmailWizardStep === 0 ? setGmailFlow("home") : setGmailWizardStep(s => s - 1)}
+                  >
+                    ← {gmailWizardStep === 0 ? "Voltar" : "Anterior"}
+                  </button>
+                  {gmailWizardStep < GMAIL_STEPS.length - 1 ? (
+                    <button className="btn-primary" onClick={() => setGmailWizardStep(s => s + 1)}>
+                      Próximo →
+                    </button>
+                  ) : (
+                    <button className="btn-primary disabled:opacity-50" onClick={finishGmailWizard} disabled={busy}>
+                      {busy ? "Aguardando..." : "Salvar e Conectar"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
 
       {/* Outlook ─────────────────────────────────────────────────────────── */}
       <div className="card p-4 space-y-4">
@@ -431,13 +605,13 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Modal: adicionar conta ──────────────────────────────────────────── */}
+      {/* Modal: adicionar conta Outlook ─────────────────────────────────── */}
       {addModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md space-y-4">
-            <h3 className="font-semibold text-lg">Adicionar conta {addModal.provider === "gmail" ? "Gmail" : "Outlook"}</h3>
+            <h3 className="font-semibold text-lg">Adicionar conta Outlook</h3>
             <p className="text-sm text-gray-600">
-              Uma janela do Google vai abrir para você escolher e autorizar a conta {addModal.provider === "gmail" ? "Gmail" : "Outlook"}.
+              Uma janela da Microsoft vai abrir para você autorizar a conta Outlook.
               Após autorizar, a sincronização começa automaticamente em segundo plano.
             </p>
             <div className="flex gap-2 justify-end pt-2">
