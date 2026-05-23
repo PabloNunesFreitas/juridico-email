@@ -1,0 +1,12 @@
+feat: co-responsáveis, responder-para editável, compor e-mail e trabalhar junto
+
+- Múltiplos co-responsáveis por demanda via demand_shares.is_co_assignee
+- Banner 'Trabalhar junto' na aba Compartilhadas usa /join (co-assign, não takeover)
+- Campo 'Responder para' vira tag-input editável com adição e remoção de destinatários
+- Modal 'Novo E-mail' com campos Para, CC, Assunto e Corpo via endpoint /compose
+- Endpoints backend: /co-assign, DELETE /co-assign/{id}, /join, /compose
+- Suporte a CC e to_emails nos providers Gmail, Outlook e Mock
+- Migração automática da coluna is_co_assignee em demand_shares
+- Seção co-responsáveis no painel lateral com add/remove inline
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>

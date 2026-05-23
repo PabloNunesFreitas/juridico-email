@@ -1,0 +1,19 @@
+0000000000000000000000000000000000000000 b9e0f29f9c02525cd3299c94d3f7540cda57926c PabloNunesFreitas <lordycraft12@gmail.com> 1778466285 -0300	commit (initial): feat: sistema jurídico de gestão de e-mails
+b9e0f29f9c02525cd3299c94d3f7540cda57926c b9e0f29f9c02525cd3299c94d3f7540cda57926c PabloNunesFreitas <lordycraft12@gmail.com> 1778466296 -0300	Branch: renamed refs/heads/master to refs/heads/main
+b9e0f29f9c02525cd3299c94d3f7540cda57926c fc8e8ea3d8c85e2c578e2c22f88ac236878516d7 PabloNunesFreitas <lordycraft12@gmail.com> 1778483474 -0300	commit: ci: force rebuild with NEXT_PUBLIC_API_URL
+fc8e8ea3d8c85e2c578e2c22f88ac236878516d7 af98f8eda86428d3432b3bf61e09ad76e360f3b3 PabloNunesFreitas <lordycraft12@gmail.com> 1778484083 -0300	commit: fix: fallback API URL para Render em produção
+af98f8eda86428d3432b3bf61e09ad76e360f3b3 fe234626cb323ea176ac59f7b57fc5bd4b0a9a19 PabloNunesFreitas <lordycraft12@gmail.com> 1778484348 -0300	commit: fix: corrige URL da API em next.config.js para produção
+fe234626cb323ea176ac59f7b57fc5bd4b0a9a19 6069c58911cd15bdf52b22d53379eb785d1e7eb7 PabloNunesFreitas <lordycraft12@gmail.com> 1778486320 -0300	commit: fix: remove category:primary do filtro Gmail para compatibilidade com todas as contas
+6069c58911cd15bdf52b22d53379eb785d1e7eb7 ee4cc055e89d107f4b09d27a61b40f66b5762649 PabloNunesFreitas <lordycraft12@gmail.com> 1778486571 -0300	commit: feat: simplifica tela de configurações Gmail — apenas botão de conectar
+ee4cc055e89d107f4b09d27a61b40f66b5762649 909eb2d84cd615cf3014079da9097a4275a85022 PabloNunesFreitas <lordycraft12@gmail.com> 1778486599 -0300	commit: fix: remove filtros de categoria Gmail — busca todos exceto spam e lixo
+909eb2d84cd615cf3014079da9097a4275a85022 537ecdeed471954ac4ccf553ccfaa8002224f722 PabloNunesFreitas <lordycraft12@gmail.com> 1778713282 -0300	commit: feat: arquivo morto com pastas por usuário — criar, renomear, excluir pastas e arquivar/desarquivar demandas
+537ecdeed471954ac4ccf553ccfaa8002224f722 98724e0a350e60f67e658c9e78d2f545342d59b2 PabloNunesFreitas <lordycraft12@gmail.com> 1778713793 -0300	commit: feat: add bulk unassign button in multi-select toolbar
+98724e0a350e60f67e658c9e78d2f545342d59b2 fe356d7a2cfa95da4c3de1db8879d03e3968b7d8 PabloNunesFreitas <lordycraft12@gmail.com> 1778714562 -0300	commit: feat: notificações, compartilhar e-mail e temas de sidebar
+fe356d7a2cfa95da4c3de1db8879d03e3968b7d8 38657c10633c2193054c767e5f593e197cbcb254 PabloNunesFreitas <lordycraft12@gmail.com> 1778715568 -0300	commit: feat: notificações completas, conversa interna, anexos e tema no banco
+38657c10633c2193054c767e5f593e197cbcb254 9500a9cadf460598c2d725eb7c8381c6cccb427b PabloNunesFreitas <lordycraft12@gmail.com> 1778716833 -0300	commit: fix: adiciona migrations automáticas de colunas no seeds.py
+9500a9cadf460598c2d725eb7c8381c6cccb427b 3fcf4839b6391e97298125483568a31b016b6d8f PabloNunesFreitas <lordycraft12@gmail.com> 1778717164 -0300	commit: fix: adiciona lib/ ao Tailwind content e safelist das classes de tema
+3fcf4839b6391e97298125483568a31b016b6d8f eca177269df1b51d9c9247bdc5cb6486eeaf3a27 PabloNunesFreitas <lordycraft12@gmail.com> 1779497915 -0300	commit: feat: co-responsaveis, responder-para editavel, compor e-mail e trabalhar junto
+eca177269df1b51d9c9247bdc5cb6486eeaf3a27 a0218c64f424f3cbb35d1a1a08923ae868c0d95b PabloNunesFreitas <lordycraft12@gmail.com> 1779498273 -0300	commit: eita
+a0218c64f424f3cbb35d1a1a08923ae868c0d95b 3fcf4839b6391e97298125483568a31b016b6d8f PabloNunesFreitas <lordycraft12@gmail.com> 1779498384 -0300	reset: moving to HEAD~2
+3fcf4839b6391e97298125483568a31b016b6d8f 38657c10633c2193054c767e5f593e197cbcb254 PabloNunesFreitas <lordycraft12@gmail.com> 1779498391 -0300	reset: moving to HEAD~2
+38657c10633c2193054c767e5f593e197cbcb254 4e325ecc068bc6b321ce78aa9dc34da2b3aa162a PabloNunesFreitas <lordycraft12@gmail.com> 1779498410 -0300	commit: feat: co-responsáveis, responder-para editável, compor e-mail e trabalhar junto
