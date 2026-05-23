@@ -29,13 +29,26 @@ export function DemandView({ source, title }: Props) {
 
   // Resposta por e-mail
   const [replyText, setReplyText] = useState("");
+  const [replyCc, setReplyCc] = useState("");
+  const [replyTo, setReplyTo] = useState<string[]>([]);
+  const [replyToInput, setReplyToInput] = useState("");
   const [replySending, setReplySending] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
   const [replySuccess, setReplySuccess] = useState(false);
 
-  // Arquivo morto
+  // Compose novo e-mail
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeTo, setComposeTo] = useState<string[]>([]);
+  const [composeToInput, setComposeToInput] = useState("");
+  const [composeCc, setComposeCc] = useState("");
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeBody, setComposeBody] = useState("");
+  const [composeSending, setComposeSending] = useState(false);
+  const [composeError, setComposeError] = useState<string | null>(null);
+
+  // Pastas (para mover)
   const [folders, setFolders] = useState<import("@/lib/api").Folder[]>([]);
-  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
 
   // Compartilhar
   const [shareOpen, setShareOpen] = useState(false);
@@ -47,6 +60,15 @@ export function DemandView({ source, title }: Props) {
   const [newComment, setNewComment] = useState("");
   const [commentSending, setCommentSending] = useState(false);
   const commentsEndRef = useRef<HTMLDivElement>(null);
+
+  // @mention dropdown
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const commentInputRef = useRef<HTMLInputElement>(null);
+
+  // Assumir demanda compartilhada
+  const [assumingShared, setAssumingShared] = useState(false);
+  const [dismissedAssume, setDismissedAssume] = useState<Set<number>>(new Set());
 
   // Seleção múltipla
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
@@ -168,14 +190,27 @@ export function DemandView({ source, title }: Props) {
     api.listFolders().then(setFolders).catch(() => {});
   }, []);
 
+  async function closeArchiveDemand(d: Demand) {
+    try {
+      await api.closeArchive(d.id);
+      setDemands(prev => prev.filter(x => x.id !== d.id));
+      if (selected?.id === d.id) setSelected(null);
+      toast("Caso enviado para o Arquivo Morto.", "success");
+      window.dispatchEvent(new Event("archivechange"));
+    } catch (e: any) { toast(e.message, "error"); }
+  }
+
   async function open(d: Demand) {
     const detail = await api.getDemand(d.id);
     setSelected(detail);
     setReplyText("");
+    setReplyTo([detail.sender_email]);
+    setReplyToInput("");
+    setReplyCc("");
     setReplyError(null);
     setReplySuccess(false);
     setShareOpen(false);
-    setArchiveOpen(false);
+    setMoveOpen(false);
     api.listComments(d.id).then(setComments).catch(() => setComments([]));
   }
 
@@ -183,23 +218,77 @@ export function DemandView({ source, title }: Props) {
     if (!selected || !newComment.trim()) return;
     setCommentSending(true);
     try {
-      const c = await api.addComment(selected.id, newComment.trim());
+      const mentionedIds = extractMentionIds(newComment, users);
+      const c = await api.addComment(selected.id, newComment.trim(), mentionedIds);
       setComments(prev => [...prev, c]);
       setNewComment("");
+      setMentionQuery(null);
       setTimeout(() => commentsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     } catch (e: any) { toast(e.message, "error"); }
     setCommentSending(false);
   }
 
+  function extractMentionIds(text: string, userList: User[]): number[] {
+    const matches = text.match(/@([\w\s]+)/g) || [];
+    const ids: number[] = [];
+    for (const m of matches) {
+      const name = m.slice(1).trim().toLowerCase();
+      const found = userList.find(u => u.name.toLowerCase().startsWith(name));
+      if (found && !ids.includes(found.id)) ids.push(found.id);
+    }
+    return ids;
+  }
+
+  function handleCommentChange(value: string) {
+    setNewComment(value);
+    const atIdx = value.lastIndexOf("@");
+    if (atIdx !== -1) {
+      const after = value.slice(atIdx + 1);
+      if (!after.includes(" ") || after.length === 0) {
+        setMentionQuery(after.toLowerCase());
+        setMentionIndex(0);
+        return;
+      }
+    }
+    setMentionQuery(null);
+  }
+
+  function mentionSuggestions() {
+    if (mentionQuery === null) return [];
+    return users.filter(u => u.id !== me?.id && u.name.toLowerCase().includes(mentionQuery));
+  }
+
+  function pickMention(u: User) {
+    const atIdx = newComment.lastIndexOf("@");
+    setNewComment(newComment.slice(0, atIdx) + `@${u.name} `);
+    setMentionQuery(null);
+    commentInputRef.current?.focus();
+  }
+
+  async function assumeSharedDemand() {
+    if (!selected) return;
+    setAssumingShared(true);
+    try {
+      const updated = await api.joinDemand(selected.id);
+      setSelected(prev => prev ? { ...prev, ...updated, messages: prev.messages } : prev);
+      await loadList();
+      toast("Você entrou como co-responsável!", "success");
+    } catch (e: any) { toast(e.message, "error"); }
+    setAssumingShared(false);
+  }
+
   async function sendReply() {
     if (!selected || !replyText.trim()) return;
+    if (replyTo.length === 0) { setReplyError("Informe ao menos um destinatário."); return; }
     setReplySending(true);
     setReplyError(null);
     setReplySuccess(false);
     try {
-      const updated = await api.replyDemand(selected.id, replyText.trim());
+      const ccList = replyCc.split(",").map(s => s.trim()).filter(Boolean);
+      const updated = await api.replyDemand(selected.id, replyText.trim(), ccList, replyTo);
       setSelected(updated);
       setReplyText("");
+      setReplyCc("");
       setReplySuccess(true);
       setTimeout(() => setReplySuccess(false), 3000);
       await loadList();
@@ -207,6 +296,29 @@ export function DemandView({ source, title }: Props) {
       setReplyError(e.message);
     }
     setReplySending(false);
+  }
+
+  async function sendCompose() {
+    if (composeTo.length === 0 || !composeSubject.trim() || !composeBody.trim()) {
+      setComposeError("Preencha: Para, Assunto e corpo do e-mail.");
+      return;
+    }
+    setComposeSending(true);
+    setComposeError(null);
+    try {
+      const ccList = composeCc.split(",").map(s => s.trim()).filter(Boolean);
+      await api.composeEmail({ to_emails: composeTo, cc: ccList, subject: composeSubject.trim(), body_text: composeBody.trim() });
+      setComposeOpen(false);
+      setComposeTo([]);
+      setComposeToInput("");
+      setComposeCc("");
+      setComposeSubject("");
+      setComposeBody("");
+      toast("E-mail enviado!", "success");
+    } catch (e: any) {
+      setComposeError(e.message);
+    }
+    setComposeSending(false);
   }
 
   async function refreshSelected() {
@@ -323,9 +435,73 @@ export function DemandView({ source, title }: Props) {
         />
       )}
 
+      {/* Modal Novo E-mail */}
+      {composeOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6">
+            <h2 className="text-lg font-semibold mb-4">Novo E-mail</h2>
+            {/* Para */}
+            <div className="mb-3">
+              <label className="text-xs text-gray-500 uppercase font-medium">Para:</label>
+              <div className="mt-1 flex flex-wrap gap-1 items-center border rounded px-2 py-1.5 bg-white focus-within:ring-1 focus-within:ring-blue-400">
+                {composeTo.map(email => (
+                  <span key={email} className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full">
+                    {email}
+                    <button type="button" className="text-blue-500 hover:text-red-500" onClick={() => setComposeTo(prev => prev.filter(e => e !== email))}>×</button>
+                  </span>
+                ))}
+                <input
+                  className="flex-1 min-w-24 text-sm outline-none"
+                  placeholder="destinatario@exemplo.com"
+                  value={composeToInput}
+                  onChange={e => setComposeToInput(e.target.value)}
+                  onKeyDown={e => {
+                    if ((e.key === "Enter" || e.key === ",") && composeToInput.trim()) {
+                      e.preventDefault();
+                      const email = composeToInput.trim().replace(/,$/, "");
+                      if (email && !composeTo.includes(email)) setComposeTo(prev => [...prev, email]);
+                      setComposeToInput("");
+                    }
+                    if (e.key === "Backspace" && !composeToInput && composeTo.length > 0) setComposeTo(prev => prev.slice(0, -1));
+                  }}
+                  onBlur={() => {
+                    const email = composeToInput.trim().replace(/,$/, "");
+                    if (email && !composeTo.includes(email)) setComposeTo(prev => [...prev, email]);
+                    setComposeToInput("");
+                  }}
+                />
+              </div>
+            </div>
+            {/* CC */}
+            <div className="mb-3">
+              <label className="text-xs text-gray-500 uppercase font-medium">CC:</label>
+              <input className="input text-sm mt-1 w-full" placeholder="email1@exemplo.com, email2@exemplo.com" value={composeCc} onChange={e => setComposeCc(e.target.value)} />
+            </div>
+            {/* Assunto */}
+            <div className="mb-3">
+              <label className="text-xs text-gray-500 uppercase font-medium">Assunto:</label>
+              <input className="input text-sm mt-1 w-full" placeholder="Assunto do e-mail" value={composeSubject} onChange={e => setComposeSubject(e.target.value)} />
+            </div>
+            {/* Corpo */}
+            <div className="mb-3">
+              <label className="text-xs text-gray-500 uppercase font-medium">Mensagem:</label>
+              <textarea className="input text-sm mt-1 w-full" rows={6} placeholder="Digite a mensagem..." value={composeBody} onChange={e => setComposeBody(e.target.value)} />
+            </div>
+            {composeError && <div className="text-xs text-red-600 mb-2">{composeError}</div>}
+            <div className="flex justify-end gap-2">
+              <button className="btn-secondary" onClick={() => { setComposeOpen(false); setComposeError(null); }}>Cancelar</button>
+              <button className="btn-primary disabled:opacity-50" disabled={composeSending} onClick={sendCompose}>
+                {composeSending ? "Enviando..." : "Enviar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <h1 className="text-2xl font-bold">{title}</h1>
         <div className="flex gap-2 items-center">
+          <button className="btn-secondary text-xs whitespace-nowrap" onClick={() => setComposeOpen(true)}>✉ Novo E-mail</button>
           <div className="relative">
             <input
               className="input w-72 pr-8"
@@ -446,13 +622,12 @@ export function DemandView({ source, title }: Props) {
             {demands.map((d) => (
               <div
                 key={d.id}
-                onClick={() => open(d)}
-                className={`flex cursor-pointer border-b border-gray-100 ${selected?.id === d.id ? "bg-blue-50" : ""} ${checkedIds.has(d.id) ? "bg-blue-50" : ""}`}
+                className={`group flex cursor-pointer border-b border-gray-100 ${selected?.id === d.id ? "bg-blue-50" : ""} ${checkedIds.has(d.id) ? "bg-blue-50" : ""}`}
               >
                 {/* Barra colorida — elemento real, não CSS trick */}
                 <div style={{ width: 5, flexShrink: 0, backgroundColor: d.email_account?.color ?? "#e5e7eb" }} />
 
-                <div className="flex-1 min-w-0 px-3 py-3 hover:bg-gray-50">
+                <div className="flex-1 min-w-0 px-3 py-3 hover:bg-gray-50" onClick={() => open(d)}>
                   <div className="flex justify-between items-start gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <input
@@ -484,6 +659,12 @@ export function DemandView({ source, title }: Props) {
                     )}
                   </div>
                 </div>
+                {/* Botão Arquivo Morto — visível ao passar o mouse */}
+                <button
+                  className="opacity-0 group-hover:opacity-100 transition-opacity px-2 text-gray-300 hover:text-orange-500 self-center shrink-0 text-lg"
+                  title="Enviar para Arquivo Morto"
+                  onClick={e => { e.stopPropagation(); closeArchiveDemand(d); }}
+                >⬇</button>
               </div>
             ))}
           </div>
@@ -536,7 +717,7 @@ export function DemandView({ source, title }: Props) {
                 <div className="relative">
                   <button
                     className="btn-secondary text-xs"
-                    onClick={() => { setShareOpen(v => !v); setArchiveOpen(false); }}
+                    onClick={() => { setShareOpen(v => !v); }}
                   >
                     ↗ Compartilhar
                   </button>
@@ -571,29 +752,42 @@ export function DemandView({ source, title }: Props) {
                   )}
                 </div>
 
-                {/* Arquivar */}
-                {selected.folder_id ? (
-                  <button
-                    className="btn-secondary text-xs"
-                    onClick={async () => { await api.unarchiveDemand(selected.id); await refreshSelected(); await loadList(); }}
-                  >↩ Desarquivar</button>
-                ) : (
+                {/* Arquivo Morto */}
+                <button
+                  className="btn-secondary text-xs"
+                  title="Encerrar o caso e enviar para o Arquivo Morto"
+                  onClick={async () => {
+                    if (!confirm("Encerrar este caso e enviar para o Arquivo Morto?")) return;
+                    await closeArchiveDemand(selected);
+                  }}
+                >⬇ Arquivo Morto</button>
+
+                {/* Mover para pasta */}
+                {folders.length > 0 && (
                   <div className="relative">
                     <button
                       className="btn-secondary text-xs"
-                      onClick={() => { setArchiveOpen(v => !v); setShareOpen(false); }}
-                    >📁 Arquivar</button>
-                    {archiveOpen && (
+                      onClick={() => { setMoveOpen(v => !v); setShareOpen(false); }}
+                    >📁 {selected.folder_id ? "Mover de pasta" : "Mover para pasta"}</button>
+                    {moveOpen && (
                       <div className="absolute right-0 top-full mt-1 bg-white border rounded shadow-lg z-20 w-52 py-1">
-                        {folders.length === 0 && (
-                          <p className="px-3 py-2 text-xs text-gray-400">Crie pastas em Arquivo Morto primeiro.</p>
+                        {selected.folder_id && (
+                          <button
+                            className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 text-gray-500"
+                            onClick={async () => {
+                              setMoveOpen(false);
+                              await api.unarchiveDemand(selected.id);
+                              await refreshSelected();
+                              await loadList();
+                            }}
+                          >↩ Remover da pasta</button>
                         )}
-                        {folders.map(f => (
+                        {folders.filter(f => f.id !== selected.folder_id).map(f => (
                           <button
                             key={f.id}
                             className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50"
                             onClick={async () => {
-                              setArchiveOpen(false);
+                              setMoveOpen(false);
                               await api.archiveDemand(selected.id, f.id);
                               await loadList();
                               setSelected(null);
@@ -605,6 +799,33 @@ export function DemandView({ source, title }: Props) {
                   </div>
                 )}
               </div>
+
+              {/* Banner trabalhar junto na demanda compartilhada */}
+              {source === "shared" && !selected.co_assignees?.some(c => c.user.id === me?.id) && !dismissedAssume.has(selected.id) && (
+                <div className="mt-4 flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">Deseja trabalhar junto nesta demanda?</p>
+                    <p className="text-xs text-amber-600 mt-0.5">
+                      {selected.assigned_user ? `Responsável: ${selected.assigned_user.name}` : "Sem responsável atribuído"}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      className="px-3 py-1.5 text-sm font-medium bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50"
+                      onClick={assumeSharedDemand}
+                      disabled={assumingShared}
+                    >
+                      {assumingShared ? "..." : "Trabalhar junto"}
+                    </button>
+                    <button
+                      className="px-3 py-1.5 text-sm font-medium bg-white border border-amber-300 text-amber-700 rounded hover:bg-amber-50"
+                      onClick={() => setDismissedAssume(prev => new Set([...prev, selected.id]))}
+                    >
+                      Não
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-5 space-y-3">
                 {selected.messages.map((m) => (
@@ -656,18 +877,46 @@ export function DemandView({ source, title }: Props) {
                         <span className="text-xs font-semibold text-gray-700">{c.user_name}</span>
                         <span className="text-xs text-gray-400">{new Date(c.created_at).toLocaleString()}</span>
                       </div>
-                      <p className="text-sm text-gray-800 whitespace-pre-wrap">{c.content}</p>
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                        {c.content.split(/(@\S+)/g).map((part, i) =>
+                          part.startsWith("@")
+                            ? <span key={i} className="text-blue-600 font-medium">{part}</span>
+                            : part
+                        )}
+                      </p>
                     </div>
                   ))}
                   <div ref={commentsEndRef} />
                 </div>
-                <div className="flex gap-2">
+                <div className="relative flex gap-2">
+                  {mentionQuery !== null && mentionSuggestions().length > 0 && (
+                    <div className="absolute bottom-full left-0 mb-1 bg-white border rounded shadow-lg z-30 w-48 max-h-40 overflow-y-auto">
+                      {mentionSuggestions().map((u, i) => (
+                        <button
+                          key={u.id}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${i === mentionIndex ? "bg-blue-50" : ""}`}
+                          onMouseDown={(e) => { e.preventDefault(); pickMention(u); }}
+                        >
+                          <span className="font-medium text-blue-600">@</span>{u.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <input
+                    ref={commentInputRef}
                     className="input flex-1 text-sm"
                     placeholder="Comentário interno... (@usuário para mencionar)"
                     value={newComment}
-                    onChange={e => setNewComment(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendComment(); } }}
+                    onChange={e => handleCommentChange(e.target.value)}
+                    onKeyDown={e => {
+                      if (mentionQuery !== null && mentionSuggestions().length > 0) {
+                        if (e.key === "ArrowDown") { e.preventDefault(); setMentionIndex(i => Math.min(i + 1, mentionSuggestions().length - 1)); return; }
+                        if (e.key === "ArrowUp") { e.preventDefault(); setMentionIndex(i => Math.max(i - 1, 0)); return; }
+                        if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pickMention(mentionSuggestions()[mentionIndex]); return; }
+                        if (e.key === "Escape") { setMentionQuery(null); return; }
+                      }
+                      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendComment(); }
+                    }}
                     disabled={commentSending}
                   />
                   <button
@@ -682,8 +931,54 @@ export function DemandView({ source, title }: Props) {
 
               {/* Caixa de resposta */}
               <div className="mt-6 border-t pt-4">
-                <div className="text-xs text-gray-500 mb-1 uppercase font-medium">
-                  Responder para: <span className="text-gray-700 normal-case font-normal">{selected.sender_email}</span>
+                {/* Responder para (editável) */}
+                <div className="mb-2">
+                  <label className="text-xs text-gray-500 uppercase font-medium">Responder para:</label>
+                  <div className="mt-1 flex flex-wrap gap-1 items-center border rounded px-2 py-1.5 bg-white focus-within:ring-1 focus-within:ring-blue-400">
+                    {replyTo.map((email) => (
+                      <span key={email} className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full">
+                        {email}
+                        <button
+                          type="button"
+                          className="text-blue-500 hover:text-red-500 leading-none"
+                          onClick={() => setReplyTo(prev => prev.filter(e => e !== email))}
+                        >×</button>
+                      </span>
+                    ))}
+                    <input
+                      className="flex-1 min-w-24 text-sm outline-none"
+                      placeholder="Adicionar destinatário..."
+                      value={replyToInput}
+                      disabled={replySending}
+                      onChange={e => setReplyToInput(e.target.value)}
+                      onKeyDown={e => {
+                        if ((e.key === "Enter" || e.key === ",") && replyToInput.trim()) {
+                          e.preventDefault();
+                          const email = replyToInput.trim().replace(/,$/, "");
+                          if (email && !replyTo.includes(email)) setReplyTo(prev => [...prev, email]);
+                          setReplyToInput("");
+                        }
+                        if (e.key === "Backspace" && !replyToInput && replyTo.length > 0) {
+                          setReplyTo(prev => prev.slice(0, -1));
+                        }
+                      }}
+                      onBlur={() => {
+                        const email = replyToInput.trim().replace(/,$/, "");
+                        if (email && !replyTo.includes(email)) setReplyTo(prev => [...prev, email]);
+                        setReplyToInput("");
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="text-xs text-gray-500 uppercase font-medium whitespace-nowrap">CC:</label>
+                  <input
+                    className="input text-sm flex-1"
+                    placeholder="email1@exemplo.com, email2@exemplo.com"
+                    value={replyCc}
+                    onChange={(e) => setReplyCc(e.target.value)}
+                    disabled={replySending}
+                  />
                 </div>
                 <textarea
                   className="input w-full mt-1 text-sm"
@@ -720,6 +1015,53 @@ export function DemandView({ source, title }: Props) {
             <div className="p-4 space-y-3 text-sm">
               <h3 className="font-semibold text-base mb-2">Dados da demanda</h3>
               <Field label="Responsável" value={selected.assigned_user?.name || "—"} />
+              {/* Co-responsáveis */}
+              <div>
+                <div className="text-xs uppercase text-gray-500 mb-1">Co-responsáveis</div>
+                <div className="space-y-1">
+                  {(selected.co_assignees ?? []).length === 0 && (
+                    <div className="text-xs text-gray-400">Nenhum</div>
+                  )}
+                  {(selected.co_assignees ?? []).map(c => (
+                    <div key={c.share_id} className="flex items-center justify-between bg-gray-50 rounded px-2 py-1">
+                      <span className="text-xs text-gray-700">{c.user.name}</span>
+                      {(isAdmin || selected.assigned_user?.id === me?.id || c.user.id === me?.id) && (
+                        <button
+                          className="text-xs text-red-400 hover:text-red-600"
+                          title="Remover co-responsável"
+                          onClick={async () => {
+                            try {
+                              const updated = await api.coUnassign(selected.id, c.share_id);
+                              setSelected(prev => prev ? { ...prev, co_assignees: (updated as any).co_assignees ?? [] } : prev);
+                            } catch (e: any) { toast(e.message, "error"); }
+                          }}
+                        >×</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {/* Adicionar co-responsável */}
+                {(isAdmin || selected.assigned_user?.id === me?.id) && (
+                  <select
+                    className="input text-xs mt-2"
+                    value=""
+                    onChange={async (e) => {
+                      const uid = Number(e.target.value);
+                      if (!uid) return;
+                      try {
+                        const updated = await api.coAssign(selected.id, uid);
+                        setSelected(prev => prev ? { ...prev, co_assignees: (updated as any).co_assignees ?? [] } : prev);
+                        toast("Co-responsável adicionado.", "success");
+                      } catch (e: any) { toast(e.message, "error"); }
+                    }}
+                  >
+                    <option value="">+ Adicionar co-responsável...</option>
+                    {users.filter(u => u.active && u.id !== selected.assigned_user?.id && !(selected.co_assignees ?? []).some(c => c.user.id === u.id)).map(u => (
+                      <option key={u.id} value={u.id}>{u.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
               <Field label="Banco">
                 <select className="input mt-1" value={selected.bank ?? ""}
                   onChange={async (e) => { await api.updateDemand(selected.id, { bank: e.target.value || undefined }); await refreshSelected(); }}>

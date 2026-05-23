@@ -12,12 +12,33 @@ from app.models import *  # noqa: F401,F403  -- registra todos os modelos no met
 log = logging.getLogger(__name__)
 
 
+_COLUMN_MIGRATIONS = [
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS theme VARCHAR(20) DEFAULT 'cinza'",
+    "ALTER TABLE demands ADD COLUMN IF NOT EXISTS folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL",
+    "ALTER TABLE demands ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE demand_shares ADD COLUMN IF NOT EXISTS is_co_assignee BOOLEAN NOT NULL DEFAULT FALSE",
+]
+
+
+def _run_migrations() -> None:
+    with engine.connect() as conn:
+        for sql in _COLUMN_MIGRATIONS:
+            try:
+                conn.execute(__import__("sqlalchemy").text(sql))
+                conn.commit()
+            except Exception as e:
+                log.warning("Migration ignorada (%s): %s", sql[:60], e)
+                conn.rollback()
+
+
 def init_db() -> None:
     try:
         Base.metadata.create_all(bind=engine)
     except OperationalError as e:
         log.error("Falha ao conectar no banco: %s", e)
         raise
+
+    _run_migrations()
 
     db = SessionLocal()
     try:

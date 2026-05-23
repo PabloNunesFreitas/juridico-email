@@ -150,3 +150,21 @@ class OutlookEmailProvider(EmailProvider):
         resp = httpx.get(url, headers=self._headers(), params=params, timeout=30)
         resp.raise_for_status()
         return [self._to_provider_msg(m) for m in resp.json().get("value", [])]
+
+    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None) -> str:
+        """Envia resposta via Microsoft Graph e retorna o id da mensagem enviada."""
+        subject_str = subject if subject.lower().startswith("re:") else f"Re: {subject}"
+        body: dict = {
+            "message": {
+                "subject": subject_str,
+                "body": {"contentType": "Text", "content": body_text},
+                "toRecipients": [{"emailAddress": {"address": to}}],
+            },
+            "saveToSentItems": True,
+        }
+        if cc:
+            body["message"]["ccRecipients"] = [{"emailAddress": {"address": addr}} for addr in cc]
+        url = f"{GRAPH_BASE}{self._user_path}/sendMail"
+        resp = httpx.post(url, headers=self._headers(), json=body, timeout=30)
+        resp.raise_for_status()
+        return ""

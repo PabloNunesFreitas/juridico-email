@@ -15,11 +15,12 @@ from app.models.message import Message
 from app.models.attachment import Attachment
 from app.models.notification import Notification
 from app.models.user import User, UserRole
-from app.schemas.demand import AssignIn, CommentOut, DemandDetail, DemandOut, DemandUpdate, ReplyIn, StatusIn
+from app.schemas.demand import AssignIn, CoAssigneeOut, ComposeIn, CommentOut, DemandDetail, DemandOut, DemandUpdate, ReplyIn, StatusIn
 
 
 class CommentIn(BaseModel):
     content: str
+    mentions: List[int] = []
 
 class ShareIn(BaseModel):
     user_id: int
@@ -36,6 +37,14 @@ def _base_query(db: Session):
     return db.query(Demand).options(joinedload(Demand.assigned_user), joinedload(Demand.email_account))
 
 
+def _co_assignees(db: Session, demand_id: int) -> List[CoAssigneeOut]:
+    from app.schemas.demand import UserMini
+    rows = db.query(DemandShare).filter(
+        DemandShare.demand_id == demand_id, DemandShare.is_co_assignee == True  # noqa: E712
+    ).all()
+    return [CoAssigneeOut(share_id=r.id, user=UserMini(id=r.shared_with.id, name=r.shared_with.name, email=r.shared_with.email)) for r in rows]
+
+
 @router.get("", response_model=List[DemandOut])
 def list_demands(
     db: Session = Depends(get_db),
@@ -47,7 +56,7 @@ def list_demands(
     unassigned: bool = False,
     q: Optional[str] = Query(None, description="Busca por remetente, cliente ou assunto"),
 ):
-    query = _base_query(db)
+    query = _base_query(db).filter(Demand.archived == False)  # noqa: E712
     if user.role != UserRole.ADMIN:
         query = query.filter(Demand.assigned_user_id == user.id)
     if status:
@@ -92,7 +101,7 @@ def my_demands(
     q: Optional[str] = Query(None),
     status: Optional[DemandStatus] = None,
 ):
-    query = _base_query(db).filter(Demand.assigned_user_id == user.id)
+    query = _base_query(db).filter(Demand.assigned_user_id == user.id, Demand.archived == False)  # noqa: E712
     if status:
         query = query.filter(Demand.status == status)
     if q:
@@ -107,7 +116,7 @@ def unassigned_demands(
     q: Optional[str] = Query(None),
     status: Optional[DemandStatus] = None,
 ):
-    query = _base_query(db).filter(Demand.assigned_user_id.is_(None))
+    query = _base_query(db).filter(Demand.assigned_user_id.is_(None), Demand.archived == False)  # noqa: E712
     if status:
         query = query.filter(Demand.status == status)
     if q:
@@ -120,7 +129,25 @@ def shared_demands(db: Session = Depends(get_db), user: User = Depends(get_curre
     ids = [r[0] for r in db.query(DemandShare.demand_id).filter(DemandShare.shared_with_id == user.id).all()]
     if not ids:
         return []
-    return _base_query(db).filter(Demand.id.in_(ids)).order_by(Demand.last_message_at.desc()).all()
+    return _base_query(db).filter(Demand.id.in_(ids), Demand.archived == False).order_by(Demand.last_message_at.desc()).all()  # noqa: E712
+
+
+@router.get("/archived-count")
+def archived_count(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    count = db.query(Demand).filter(Demand.archived == True).count()  # noqa: E712
+    return {"count": count}
+
+
+@router.get("/archived", response_model=List[DemandOut])
+def list_archived(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    q: Optional[str] = Query(None),
+):
+    query = _base_query(db).filter(Demand.archived == True)  # noqa: E712
+    if q:
+        query = _apply_search(query, q)
+    return query.order_by(Demand.last_message_at.desc()).limit(2000).all()
 
 
 @router.get("/{demand_id}", response_model=DemandDetail)
@@ -240,25 +267,32 @@ def reply_demand(
     from_addr = demand.email_account.email_address
     subject = demand.subject or ""
 
+    primary_to = (payload.to_emails or [demand.sender_email])
+    if not primary_to:
+        raise HTTPException(status_code=400, detail="Informe ao menos um destinatário")
+
     try:
         ext_id = provider.send_reply(
-            to=demand.sender_email,
+            to=primary_to[0],
             from_addr=from_addr,
             subject=subject,
             body_text=payload.body_text,
             thread_id=demand.external_thread_id or None,
+            cc=(primary_to[1:] + (payload.cc or [])) or None,
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {e}")
 
     now = datetime.utcnow()
     reply_subject = subject if subject.lower().startswith("re:") else f"Re: {subject}"
+    all_recipients = (payload.to_emails or [demand.sender_email]) + (payload.cc or [])
     msg = Message(
         demand_id=demand.id,
         external_message_id=ext_id,
         direction="out",
         sender_email=from_addr,
         sender_name=None,
+        recipient_emails=", ".join(all_recipients),
         subject=reply_subject,
         body_text=payload.body_text,
         body_html=None,
@@ -304,13 +338,48 @@ def unarchive_demand(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Remove a demanda do arquivo morto, voltando para a caixa de entrada."""
+    """Remove a demanda de uma pasta organizacional, voltando para a caixa de entrada."""
     demand = db.query(Demand).filter(Demand.id == demand_id).first()
     if not demand:
         raise HTTPException(status_code=404, detail="Demanda não encontrada")
     if user.role != UserRole.ADMIN and demand.assigned_user_id != user.id:
         raise HTTPException(status_code=403, detail="Sem permissão")
     demand.folder_id = None
+    db.commit()
+    return _base_query(db).filter(Demand.id == demand_id).first()
+
+
+@router.post("/{demand_id}/close-archive", response_model=DemandOut)
+def close_archive(
+    demand_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Envia a demanda para o Arquivo Morto (casos finalizados)."""
+    demand = db.query(Demand).filter(Demand.id == demand_id).first()
+    if not demand:
+        raise HTTPException(status_code=404, detail="Demanda não encontrada")
+    if user.role != UserRole.ADMIN and demand.assigned_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Sem permissão")
+    demand.archived = True
+    demand.folder_id = None
+    db.commit()
+    return _base_query(db).filter(Demand.id == demand_id).first()
+
+
+@router.post("/{demand_id}/reopen", response_model=DemandOut)
+def reopen_demand(
+    demand_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Restaura a demanda do Arquivo Morto de volta para a caixa de entrada."""
+    demand = db.query(Demand).filter(Demand.id == demand_id).first()
+    if not demand:
+        raise HTTPException(status_code=404, detail="Demanda não encontrada")
+    if user.role != UserRole.ADMIN and demand.assigned_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Sem permissão")
+    demand.archived = False
     db.commit()
     return _base_query(db).filter(Demand.id == demand_id).first()
 
@@ -438,6 +507,12 @@ def add_comment(
                 message=f"{user.name} comentou em: {subject_preview}",
             ))
             notified.add(uid)
+    for uid in payload.mentions:
+        if uid != user.id:
+            db.add(Notification(
+                user_id=uid, demand_id=demand_id, type="COMMENT_MENTION",
+                message=f"{user.name} mencionou você em: {subject_preview}",
+            ))
     db.commit()
     db.refresh(comment)
     return CommentOut(
@@ -460,4 +535,125 @@ def unshare_demand(
         raise HTTPException(status_code=403, detail="Sem permissão")
     db.delete(share)
     db.commit()
+    return {"ok": True}
+
+
+# ── Co-responsáveis ─────────────────────────────────────────────────────────
+
+@router.post("/{demand_id}/co-assign", response_model=DemandOut)
+def co_assign(
+    demand_id: int,
+    payload: AssignIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Adiciona um usuário como co-responsável (cria/atualiza share com is_co_assignee=True)."""
+    demand = db.query(Demand).filter(Demand.id == demand_id).first()
+    if not demand:
+        raise HTTPException(status_code=404, detail="Demanda não encontrada")
+    if user.role != UserRole.ADMIN and demand.assigned_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Sem permissão")
+    target = db.query(User).filter(User.id == payload.user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    share = db.query(DemandShare).filter(
+        DemandShare.demand_id == demand_id, DemandShare.shared_with_id == payload.user_id
+    ).first()
+    if share:
+        share.is_co_assignee = True
+    else:
+        share = DemandShare(
+            demand_id=demand_id, shared_by_id=user.id,
+            shared_with_id=payload.user_id, is_co_assignee=True,
+        )
+        db.add(share)
+    subject_preview = (demand.subject or demand.sender_email or "")[:60]
+    db.add(Notification(
+        user_id=payload.user_id, demand_id=demand_id, type="DEMAND_ASSIGNED",
+        message=f"{user.name} te adicionou como co-responsável em: {subject_preview}",
+    ))
+    db.commit()
+    result = _base_query(db).filter(Demand.id == demand_id).first()
+    out = DemandOut.model_validate(result)
+    out.co_assignees = _co_assignees(db, demand_id)
+    return out
+
+
+@router.delete("/{demand_id}/co-assign/{share_id}", response_model=DemandOut)
+def co_unassign(
+    demand_id: int,
+    share_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Remove co-responsável."""
+    share = db.query(DemandShare).filter(DemandShare.id == share_id, DemandShare.demand_id == demand_id).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Co-responsável não encontrado")
+    demand = db.query(Demand).filter(Demand.id == demand_id).first()
+    if user.role != UserRole.ADMIN and demand.assigned_user_id != user.id and share.shared_with_id != user.id:
+        raise HTTPException(status_code=403, detail="Sem permissão")
+    db.delete(share)
+    db.commit()
+    result = _base_query(db).filter(Demand.id == demand_id).first()
+    out = DemandOut.model_validate(result)
+    out.co_assignees = _co_assignees(db, demand_id)
+    return out
+
+
+@router.post("/{demand_id}/join", response_model=DemandOut)
+def join_shared_demand(
+    demand_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Usuário aceita trabalhar junto (is_co_assignee=True) na demanda compartilhada."""
+    demand = db.query(Demand).filter(Demand.id == demand_id).first()
+    if not demand:
+        raise HTTPException(status_code=404, detail="Demanda não encontrada")
+    share = db.query(DemandShare).filter(
+        DemandShare.demand_id == demand_id, DemandShare.shared_with_id == user.id
+    ).first()
+    if not share:
+        raise HTTPException(status_code=403, detail="Demanda não compartilhada com você")
+    share.is_co_assignee = True
+    subject_preview = (demand.subject or demand.sender_email or "")[:60]
+    if demand.assigned_user_id and demand.assigned_user_id != user.id:
+        db.add(Notification(
+            user_id=demand.assigned_user_id, demand_id=demand_id, type="DEMAND_ASSIGNED",
+            message=f"{user.name} entrou como co-responsável em: {subject_preview}",
+        ))
+    db.commit()
+    result = _base_query(db).filter(Demand.id == demand_id).first()
+    out = DemandOut.model_validate(result)
+    out.co_assignees = _co_assignees(db, demand_id)
+    return out
+
+
+# ── Compor novo e-mail ───────────────────────────────────────────────────────
+
+@router.post("/compose")
+def compose_email(
+    payload: ComposeIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Envia um novo e-mail (não vinculado a uma demanda existente)."""
+    from app.models.email_account import EmailAccount
+    account = db.query(EmailAccount).filter(EmailAccount.active == True).first()  # noqa: E712
+    if not account:
+        raise HTTPException(status_code=400, detail="Nenhuma conta de e-mail configurada")
+    provider = get_provider_for_account(account)
+    try:
+        provider.send_reply(
+            to=payload.to_emails[0],
+            from_addr=account.email_address,
+            subject=payload.subject,
+            body_text=payload.body_text,
+            cc=(payload.to_emails[1:] + payload.cc) or None,
+        )
+    except NotImplementedError:
+        raise HTTPException(status_code=400, detail="Provider atual não suporta envio de e-mail")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Falha ao enviar: {e}")
     return {"ok": True}

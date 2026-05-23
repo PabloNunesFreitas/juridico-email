@@ -15,6 +15,15 @@ class DemandUpdate(BaseModel):
 
 class ReplyIn(BaseModel):
     body_text: str
+    to_emails: Optional[List[str]] = Field(default=None, description="Destinatários (padrão: remetente original)")
+    cc: List[str] = Field(default_factory=list, description="Endereços de e-mail em cópia (CC)")
+
+
+class ComposeIn(BaseModel):
+    to_emails: List[str] = Field(..., description="Destinatários")
+    cc: List[str] = Field(default_factory=list)
+    subject: str
+    body_text: str
 
 
 class AssignIn(BaseModel):
@@ -82,6 +91,14 @@ class InboxAccountMini(BaseModel):
         from_attributes = True
 
 
+class CoAssigneeOut(BaseModel):
+    share_id: int
+    user: UserMini
+
+    class Config:
+        from_attributes = True
+
+
 class DemandOut(BaseModel):
     id: int
     sender_email: str
@@ -92,8 +109,10 @@ class DemandOut(BaseModel):
     bank: Optional[Bank] = None
     status: DemandStatus
     assigned_user: Optional[UserMini] = None
+    co_assignees: List[CoAssigneeOut] = []
     email_account: Optional[InboxAccountMini] = None
     folder_id: Optional[int] = None
+    archived: bool = False
     last_message_at: datetime
     created_at: datetime
 

@@ -285,7 +285,7 @@ class GmailEmailProvider(EmailProvider):
         data = resp.json().get("data", "")
         return _b64url_decode(data)
 
-    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None) -> str:
+    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None) -> str:
         """Envia resposta por e-mail e retorna o external_id da mensagem enviada."""
         import email.mime.text as _mime_text
         subject_str = subject if subject.lower().startswith("re:") else f"Re: {subject}"
@@ -293,6 +293,8 @@ class GmailEmailProvider(EmailProvider):
         msg["To"] = to
         msg["From"] = from_addr
         msg["Subject"] = subject_str
+        if cc:
+            msg["Cc"] = ", ".join(cc)
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
         payload: dict = {"raw": raw}
         if thread_id:

@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -11,6 +11,7 @@ class DemandShare(Base):
     shared_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     shared_with_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     note = Column(String(500), nullable=True)
+    is_co_assignee = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     demand = relationship("Demand")

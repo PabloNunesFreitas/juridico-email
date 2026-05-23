@@ -22,6 +22,8 @@ export interface Folder {
   demand_count: number;
 }
 
+export interface CoAssignee { share_id: number; user: UserMini; }
+
 export interface Demand {
   id: number;
   sender_email: string;
@@ -32,8 +34,10 @@ export interface Demand {
   bank: string | null;
   status: string;
   assigned_user: UserMini | null;
+  co_assignees: CoAssignee[];
   email_account: { id: number; email_address: string; color: string } | null;
   folder_id: number | null;
+  archived: boolean;
   last_message_at: string;
   created_at: string;
 }
@@ -172,12 +176,19 @@ export const api = {
   updateDemand: (id: number, data: Partial<{ client_name: string; nup: string; bank: string; status: string }>) =>
     request<Demand>(`/api/v1/demands/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   demandLogs: (id: number) => request<AuditLog[]>(`/api/v1/demands/${id}/logs`),
-  replyDemand: (id: number, body_text: string) =>
-    request<DemandDetail>(`/api/v1/demands/${id}/reply`, { method: "POST", body: JSON.stringify({ body_text }) }),
+  replyDemand: (id: number, body_text: string, cc: string[] = [], to_emails?: string[]) =>
+    request<DemandDetail>(`/api/v1/demands/${id}/reply`, { method: "POST", body: JSON.stringify({ body_text, cc, to_emails }) }),
   archiveDemand: (id: number, folder_id: number) =>
     request<Demand>(`/api/v1/demands/${id}/archive?folder_id=${folder_id}`, { method: "POST" }),
   unarchiveDemand: (id: number) =>
     request<Demand>(`/api/v1/demands/${id}/unarchive`, { method: "POST" }),
+  closeArchive: (id: number) =>
+    request<Demand>(`/api/v1/demands/${id}/close-archive`, { method: "POST" }),
+  reopenDemand: (id: number) =>
+    request<Demand>(`/api/v1/demands/${id}/reopen`, { method: "POST" }),
+  archivedDemands: (q?: string) =>
+    request<Demand[]>(`/api/v1/demands/archived${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  archivedCount: () => request<{ count: number }>("/api/v1/demands/archived-count"),
 
   listFolders: () => request<Folder[]>("/api/v1/folders"),
   createFolder: (name: string) => request<Folder>("/api/v1/folders", { method: "POST", body: JSON.stringify({ name }) }),
@@ -186,8 +197,8 @@ export const api = {
   listFolderDemands: (id: number) => request<Demand[]>(`/api/v1/folders/${id}/demands`),
 
   listComments: (demandId: number) => request<Comment[]>(`/api/v1/demands/${demandId}/comments`),
-  addComment: (demandId: number, content: string) =>
-    request<Comment>(`/api/v1/demands/${demandId}/comments`, { method: "POST", body: JSON.stringify({ content }) }),
+  addComment: (demandId: number, content: string, mentions: number[] = []) =>
+    request<Comment>(`/api/v1/demands/${demandId}/comments`, { method: "POST", body: JSON.stringify({ content, mentions }) }),
 
   listNotifications: () => request<Notification[]>("/api/v1/notifications"),
   unreadCount: () => request<{ count: number }>("/api/v1/notifications/unread-count"),
@@ -199,6 +210,15 @@ export const api = {
 
   downloadAttachment: (messageId: number, attId: number) =>
     `${API_URL}/api/v1/messages/${messageId}/attachments/${attId}/download`,
+
+  joinDemand: (id: number) =>
+    request<Demand>(`/api/v1/demands/${id}/join`, { method: "POST" }),
+  coAssign: (demandId: number, user_id: number) =>
+    request<Demand>(`/api/v1/demands/${demandId}/co-assign`, { method: "POST", body: JSON.stringify({ user_id }) }),
+  coUnassign: (demandId: number, shareId: number) =>
+    request<Demand>(`/api/v1/demands/${demandId}/co-assign/${shareId}`, { method: "DELETE" }),
+  composeEmail: (data: { to_emails: string[]; cc: string[]; subject: string; body_text: string }) =>
+    request<{ ok: boolean }>("/api/v1/demands/compose", { method: "POST", body: JSON.stringify(data) }),
 
   listLogs: (params: Record<string, any> = {}) => {
     const qs = new URLSearchParams(

@@ -14,7 +14,7 @@ router = APIRouter(prefix="/folders", tags=["folders"])
 
 
 def _folder_out(f: Folder, db: Session) -> FolderOut:
-    count = db.query(Demand).filter(Demand.folder_id == f.id).count()
+    count = db.query(Demand).filter(Demand.folder_id == f.id, Demand.archived == False).count()  # noqa: E712
     return FolderOut(
         id=f.id,
         name=f.name,
@@ -79,7 +79,7 @@ def list_folder_demands(folder_id: int, db: Session = Depends(get_db), user: Use
     demands = (
         db.query(Demand)
         .options(joinedload(Demand.assigned_user), joinedload(Demand.email_account))
-        .filter(Demand.folder_id == folder_id)
+        .filter(Demand.folder_id == folder_id, Demand.archived == False)  # noqa: E712
         .order_by(Demand.last_message_at.desc())
         .all()
     )

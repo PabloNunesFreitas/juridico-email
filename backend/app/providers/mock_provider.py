@@ -70,3 +70,19 @@ class MockEmailProvider(EmailProvider):
 
     def get_thread(self, thread_id: str) -> List[ProviderMessage]:
         return [m for m in self._store if m.thread_id == thread_id]
+
+    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None) -> str:
+        import uuid
+        ext_id = f"mock-out-{uuid.uuid4().hex[:8]}"
+        self._store.append(ProviderMessage(
+            external_id=ext_id,
+            thread_id=thread_id,
+            sender_email=from_addr,
+            sender_name=None,
+            recipients=[to] + (cc or []),
+            subject=subject if subject.lower().startswith("re:") else f"Re: {subject}",
+            body_text=body_text,
+            body_html=None,
+            received_at=datetime.utcnow(),
+        ))
+        return ext_id

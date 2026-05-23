@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -46,6 +46,7 @@ class Demand(Base):
     assigned_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     email_account_id = Column(Integer, ForeignKey("email_accounts.id"), nullable=True, index=True)
     folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True, index=True)
+    archived = Column(Boolean, default=False, nullable=False, server_default="false")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     last_message_at = Column(DateTime, default=datetime.utcnow, nullable=False)
