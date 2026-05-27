@@ -237,8 +237,7 @@ class GmailEmailProvider(EmailProvider):
         ids: List[str] = []
         page_token: Optional[str] = None
         per_page = 500  # Gmail aceita até 500 por página no list
-        # Exclui spam, lixo, promoções, redes sociais, atualizações e fóruns
-        q = "-in:spam -in:trash -category:promotions -category:social -category:updates -category:forums"
+        q = "-in:spam -in:trash"
         if since:
             q += f" after:{int(since.timestamp())}"
         while len(ids) < limit:
