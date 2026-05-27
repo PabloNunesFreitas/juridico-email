@@ -229,12 +229,16 @@ export function DemandView({ source, title }: Props) {
   }
 
   function extractMentionIds(text: string, userList: User[]): number[] {
-    const matches = text.match(/@([\w\s]+)/g) || [];
+    const sorted = [...userList].sort((a, b) => b.name.length - a.name.length);
     const ids: number[] = [];
-    for (const m of matches) {
-      const name = m.slice(1).trim().toLowerCase();
-      const found = userList.find(u => u.name.toLowerCase().startsWith(name));
+    let i = 0;
+    while (i < text.length) {
+      const atIdx = text.indexOf("@", i);
+      if (atIdx === -1) break;
+      const after = text.slice(atIdx + 1);
+      const found = sorted.find(u => after.toLowerCase().startsWith(u.name.toLowerCase()));
       if (found && !ids.includes(found.id)) ids.push(found.id);
+      i = atIdx + 1;
     }
     return ids;
   }
@@ -244,7 +248,8 @@ export function DemandView({ source, title }: Props) {
     const atIdx = value.lastIndexOf("@");
     if (atIdx !== -1) {
       const after = value.slice(atIdx + 1);
-      if (!after.includes(" ") || after.length === 0) {
+      const hasMatch = users.some(u => u.id !== me?.id && u.name.toLowerCase().startsWith(after.toLowerCase()));
+      if (hasMatch || after.length === 0) {
         setMentionQuery(after.toLowerCase());
         setMentionIndex(0);
         return;
@@ -255,7 +260,30 @@ export function DemandView({ source, title }: Props) {
 
   function mentionSuggestions() {
     if (mentionQuery === null) return [];
-    return users.filter(u => u.id !== me?.id && u.name.toLowerCase().includes(mentionQuery));
+    return users.filter(u => u.id !== me?.id && u.name.toLowerCase().startsWith(mentionQuery));
+  }
+
+  function renderMentions(content: string) {
+    const sorted = [...users].sort((a, b) => b.name.length - a.name.length);
+    const result: React.ReactNode[] = [];
+    let remaining = content;
+    let key = 0;
+    while (remaining.length > 0) {
+      const atIdx = remaining.indexOf("@");
+      if (atIdx === -1) { result.push(remaining); break; }
+      if (atIdx > 0) result.push(remaining.slice(0, atIdx));
+      const after = remaining.slice(atIdx + 1);
+      const matched = sorted.find(u => after.toLowerCase().startsWith(u.name.toLowerCase()));
+      if (matched) {
+        result.push(<span key={key++} className="text-blue-600 font-medium">@{matched.name}</span>);
+        remaining = remaining.slice(atIdx + 1 + matched.name.length);
+      } else {
+        const end = after.search(/\s|$/) + 1;
+        result.push(remaining.slice(atIdx, atIdx + end));
+        remaining = remaining.slice(atIdx + end);
+      }
+    }
+    return result;
   }
 
   function pickMention(u: User) {
@@ -498,40 +526,40 @@ export function DemandView({ source, title }: Props) {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold">{title}</h1>
-        <div className="flex gap-2 items-center">
-          <button className="btn-secondary text-xs whitespace-nowrap" onClick={() => setComposeOpen(true)}>✉ Novo E-mail</button>
-          <div className="relative">
-            <input
-              className="input w-72 pr-8"
-              placeholder="Buscar por remetente, assunto, NUP, corpo..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {search && (
-              <button
-                onClick={() => setSearch("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-sm"
-                aria-label="limpar busca"
-              >×</button>
-            )}
-          </div>
-          <select className="input w-56" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-            <option value="">Todos os status</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          {isAdmin && source === "all" && (
-            <select className="input w-52" value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)}>
-              <option value="">Todos responsáveis</option>
-              <option value="unassigned">— Sem responsável —</option>
-              {users.filter(u => u.active).map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <h1 className="text-xl md:text-2xl font-bold">{title}</h1>
+        <button className="btn-secondary text-xs whitespace-nowrap" onClick={() => setComposeOpen(true)}>✉ Novo E-mail</button>
+      </div>
+      <div className="flex gap-2 items-center mb-4 flex-wrap">
+        <div className="relative flex-1 min-w-[160px]">
+          <input
+            className="input w-full pr-8"
+            placeholder="Buscar por remetente, assunto, NUP..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-sm"
+              aria-label="limpar busca"
+            >×</button>
           )}
-          <span className="text-xs text-gray-500 whitespace-nowrap">{demands.length} resultados</span>
         </div>
+        <select className="input flex-1 min-w-[130px] md:w-56" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+          <option value="">Todos os status</option>
+          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        {isAdmin && source === "all" && (
+          <select className="input flex-1 min-w-[130px] md:w-52" value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)}>
+            <option value="">Todos responsáveis</option>
+            <option value="unassigned">— Sem responsável —</option>
+            {users.filter(u => u.active).map((u) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        )}
+        <span className="text-xs text-gray-500 whitespace-nowrap">{demands.length} resultados</span>
       </div>
       {error && <div className="card p-3 mb-3 text-sm text-red-700 bg-red-50">{error}</div>}
 
@@ -559,8 +587,8 @@ export function DemandView({ source, title }: Props) {
         </div>
       )}
 
-      <div className="grid grid-cols-12 gap-4 h-[calc(100vh-160px)]">
-        <div className="col-span-4 card overflow-y-auto flex flex-col">
+      <div className="grid grid-cols-12 gap-3 md:gap-4 md:h-[calc(100vh-160px)]">
+        <div className={`col-span-12 md:col-span-4 card overflow-y-auto flex flex-col ${selected ? "hidden md:flex" : "flex"}`}>
           {/* Barra de seleção múltipla */}
           {checkedIds.size > 0 && (
             <div className="sticky top-0 z-10 bg-blue-600 text-white px-3 py-2 flex items-center gap-2 flex-wrap text-sm">
@@ -670,11 +698,17 @@ export function DemandView({ source, title }: Props) {
           </div>
         </div>
 
-        <div className="col-span-5 card overflow-y-auto">
+        <div className={`col-span-12 md:col-span-5 card overflow-y-auto ${!selected ? "hidden md:block" : "block"}`}>
           {!selected ? (
             <div className="p-6 text-sm text-gray-500">Selecione uma demanda para ver detalhes.</div>
           ) : (
             <div className="p-4">
+              <button
+                className="md:hidden flex items-center gap-1 text-sm text-blue-600 mb-3 font-medium"
+                onClick={() => setSelected(null)}
+              >
+                ← Voltar
+              </button>
               <h2 className="text-lg font-semibold">{selected.subject || "(sem assunto)"}</h2>
               <div className="text-sm text-gray-600 mt-1">De: {selected.sender_name || ""} &lt;{selected.sender_email}&gt;</div>
               <div className="flex gap-2 mt-3 flex-wrap">
@@ -878,11 +912,7 @@ export function DemandView({ source, title }: Props) {
                         <span className="text-xs text-gray-400">{new Date(c.created_at).toLocaleString()}</span>
                       </div>
                       <p className="text-sm text-gray-800 whitespace-pre-wrap">
-                        {c.content.split(/(@\S+)/g).map((part, i) =>
-                          part.startsWith("@")
-                            ? <span key={i} className="text-blue-600 font-medium">{part}</span>
-                            : part
-                        )}
+                        {renderMentions(c.content)}
                       </p>
                     </div>
                   ))}
@@ -1008,7 +1038,7 @@ export function DemandView({ source, title }: Props) {
           )}
         </div>
 
-        <div className="col-span-3 card overflow-y-auto">
+        <div className={`col-span-12 md:col-span-3 card overflow-y-auto ${!selected ? "hidden md:block" : "block"}`}>
           {!selected ? (
             <div className="p-4 text-sm text-gray-500">—</div>
           ) : (

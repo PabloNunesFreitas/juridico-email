@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { api } from "@/lib/api";
 
 export default function LoginPage() {
@@ -31,8 +32,10 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="card w-full max-w-md p-8">
-        <h1 className="text-2xl font-bold mb-1">Gestão de E-mails Jurídicos</h1>
-        <p className="text-sm text-gray-500 mb-6">Acesso interno</p>
+        <div className="flex justify-center mb-6">
+          <Image src="/logo.png" alt="Andrade Alves Advogados" width={200} height={80} className="object-contain" priority />
+        </div>
+        <p className="text-sm text-gray-500 text-center mb-6">Gestão de E-mails Jurídicos</p>
         <form onSubmit={submit} className="space-y-4">
           <div>
             <label className="text-sm font-medium">E-mail</label>

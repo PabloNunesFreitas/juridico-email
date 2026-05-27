@@ -103,8 +103,74 @@ def _get_accounts_to_sync(db: Session):
     return [(get_provider_for_account(acc), acc.id) for acc in active]
 
 
+PARALLEL = 10       # workers paralelos de download
+CHUNK_SIZE = 200    # salva no banco a cada N mensagens baixadas (mantém RAM limitada)
+
+
+def _save_chunk(chunk: list, account_id, actor, label: str, chunk_num: int) -> tuple:
+    """Salva um lote de mensagens em sessão própria. Retorna (new_demands, new_messages)."""
+    from app.core.database import SessionLocal as _SessionLocal
+    chunk_db = _SessionLocal()
+    nd = nm = 0
+    try:
+        for pm in chunk:
+            try:
+                with chunk_db.begin_nested():
+                    demand, created = _find_or_create_demand(chunk_db, pm)
+                    if created:
+                        demand.email_account_id = account_id
+                        nd += 1
+                    elif demand.email_account_id is None and account_id:
+                        demand.email_account_id = account_id
+                    msg = Message(
+                        demand_id=demand.id,
+                        external_message_id=_sanitize(pm.external_id, 255),
+                        direction="in",
+                        sender_email=_sanitize(pm.sender_email, 180),
+                        sender_name=_sanitize(pm.sender_name, 180),
+                        recipient_emails=_sanitize(",".join(pm.recipients)),
+                        subject=_sanitize(pm.subject, 500),
+                        body_text=_sanitize(pm.body_text),
+                        body_html=_sanitize(pm.body_html),
+                        received_at=pm.received_at,
+                        has_attachments=bool(pm.attachments),
+                    )
+                    chunk_db.add(msg)
+                    chunk_db.flush()
+                    for a in pm.attachments:
+                        chunk_db.add(Attachment(
+                            message_id=msg.id,
+                            filename=_sanitize(a.filename, 255),
+                            mime_type=_sanitize(a.mime_type, 120),
+                            size=a.size,
+                            external_attachment_id=_sanitize(a.external_id, 255),
+                        ))
+                    if pm.received_at > demand.last_message_at:
+                        demand.last_message_at = pm.received_at
+                    log_event(
+                        chunk_db, event_type="MESSAGE_RECEIVED",
+                        description=f"Nova mensagem de {pm.sender_email}",
+                        demand_id=demand.id,
+                        user_id=actor.id if actor else None,
+                        metadata={"external_message_id": pm.external_id}, commit=False,
+                    )
+                nm += 1
+            except Exception as e:
+                log.warning("[sync] chunk %d msg %s falhou: %s", chunk_num, pm.external_id, e)
+        chunk_db.commit()
+    except Exception as e:
+        log.error("[sync] chunk %d commit falhou: %s", chunk_num, e)
+        try:
+            chunk_db.rollback()
+        except Exception:
+            pass
+    finally:
+        chunk_db.close()
+    return nd, nm
+
+
 def _sync_one_account(db: Session, provider, account_id: Optional[int], actor: Optional[User], since: Optional[datetime], limit: int, label: str):
-    """Sincroniza uma conta. Retorna (scanned, new_demands, new_messages)."""
+    """Sincroniza uma conta em lotes (download + save intercalados). Retorna (scanned, new_demands, new_messages)."""
     try:
         all_ids = provider.list_message_ids(since=since, limit=limit)
     except Exception as e:
@@ -114,7 +180,7 @@ def _sync_one_account(db: Session, provider, account_id: Optional[int], actor: O
 
     if not all_ids:
         log.info("[sync] caixa vazia (%s)", label)
-        return len(all_ids), 0, 0
+        return 0, 0, 0
 
     existing_ids = {
         row[0] for row in db.query(Message.external_message_id)
@@ -127,9 +193,11 @@ def _sync_one_account(db: Session, provider, account_id: Optional[int], actor: O
     if not new_ids:
         return len(all_ids), 0, 0
 
-    PARALLEL = 5
-    new_demands = 0
-    new_messages = 0
+    total_new_demands = 0
+    total_new_messages = 0
+    total_fetched = 0
+    chunks = [new_ids[i:i + CHUNK_SIZE] for i in range(0, len(new_ids), CHUNK_SIZE)]
+    log.info("[sync] %s: %d lotes de até %d msgs, %d workers", label, len(chunks), CHUNK_SIZE, PARALLEL)
 
     def _fetch_one(ext_id: str, _prov=provider):
         try:
@@ -137,114 +205,86 @@ def _sync_one_account(db: Session, provider, account_id: Optional[int], actor: O
         except Exception as e:
             return ext_id, None, str(e)
 
-    log.info("[sync] FASE 1 (%s): baixando %d mensagens...", label, len(new_ids))
-    downloaded: list = []
-    fetched_count = 0
-    with ThreadPoolExecutor(max_workers=PARALLEL) as pool:
-        futures = {pool.submit(_fetch_one, eid): eid for eid in new_ids}
-        for fut in as_completed(futures, timeout=3600):
-            try:
-                ext_id, pm, err = fut.result(timeout=120)
-            except Exception as e:
-                log.warning("[sync] future erro: %s", e)
-                continue
-            fetched_count += 1
-            if err or pm is None:
-                if err:
-                    log.warning("[sync] falha ao baixar %s: %s", ext_id, err)
-                continue
-            if pm.body_html and len(pm.body_html) > 100_000:
-                pm.body_html = pm.body_html[:100_000] + "\n[...truncado...]"
-            downloaded.append(pm)
-            SYNC_STATE.tick(fetched=fetched_count, new_messages=0, new_demands=0,
-                            last=f"📥 Baixando: {pm.subject or pm.sender_email}")
-            if fetched_count % 100 == 0:
-                log.info("[sync] FASE 1 progresso: %d/%d baixadas", fetched_count, len(new_ids))
+    for chunk_num, chunk_ids in enumerate(chunks, start=1):
+        log.info("[sync] %s: lote %d/%d — baixando %d msgs...", label, chunk_num, len(chunks), len(chunk_ids))
+        downloaded: list = []
 
-    log.info("[sync] FASE 1 (%s): %d mensagens em memória. Iniciando FASE 2...", label, len(downloaded))
-    SYNC_STATE.tick(fetched=len(downloaded), new_messages=0, new_demands=0,
-                    last=f"💾 Salvando {len(downloaded)} mensagens no banco...")
+        with ThreadPoolExecutor(max_workers=PARALLEL) as pool:
+            futures = {pool.submit(_fetch_one, eid): eid for eid in chunk_ids}
+            for fut in as_completed(futures, timeout=3600):
+                try:
+                    ext_id, pm, err = fut.result(timeout=120)
+                except Exception as e:
+                    log.warning("[sync] future erro: %s", e)
+                    continue
+                total_fetched += 1
+                if err or pm is None:
+                    if err:
+                        log.warning("[sync] falha ao baixar %s: %s", ext_id, err)
+                    continue
+                if pm.body_html and len(pm.body_html) > 100_000:
+                    pm.body_html = pm.body_html[:100_000] + "\n[...truncado...]"
+                downloaded.append(pm)
+                SYNC_STATE.tick(
+                    fetched=total_fetched,
+                    new_messages=total_new_messages,
+                    new_demands=total_new_demands,
+                    last=f"📥 Baixando: {pm.subject or pm.sender_email}",
+                )
+
+        if not downloaded:
+            continue
+
+        downloaded.sort(key=lambda m: m.received_at)
+        log.info("[sync] %s: lote %d — salvando %d msgs...", label, chunk_num, len(downloaded))
+        SYNC_STATE.tick(
+            fetched=total_fetched,
+            new_messages=total_new_messages,
+            new_demands=total_new_demands,
+            last=f"💾 Salvando lote {chunk_num}/{len(chunks)} ({len(downloaded)} msgs)...",
+        )
+
+        nd, nm = _save_chunk(downloaded, account_id, actor, label, chunk_num)
+        total_new_demands += nd
+        total_new_messages += nm
+        downloaded.clear()  # libera memória do lote
+        log.info("[sync] %s: lote %d concluído — %d msgs, %d demandas", label, chunk_num, nm, nd)
 
     from app.core.database import SessionLocal as _SessionLocal
+    final_db = _SessionLocal()
     try:
-        db.close()
-    except Exception:
-        pass
-    db = _SessionLocal()
+        log_event(
+            final_db, event_type="SYNC_COMPLETED",
+            description=f"Sync {label}: {total_new_demands} demandas, {total_new_messages} msgs",
+            user_id=actor.id if actor else None,
+            metadata={"account_id": account_id, "new_demands": total_new_demands, "new_messages": total_new_messages},
+        )
+    finally:
+        final_db.close()
 
-    downloaded.sort(key=lambda m: m.received_at)
-    log.info("[sync] FASE 2 (%s): iniciando loop de inserção", label)
-    failed_count = 0
-
-    for pm in downloaded:
-        try:
-            with db.begin_nested():
-                demand, created = _find_or_create_demand(db, pm)
-                if created:
-                    demand.email_account_id = account_id
-                    new_demands += 1
-                elif demand.email_account_id is None and account_id:
-                    demand.email_account_id = account_id
-                msg = Message(
-                    demand_id=demand.id,
-                    external_message_id=_sanitize(pm.external_id, 255),
-                    direction="in",
-                    sender_email=_sanitize(pm.sender_email, 180),
-                    sender_name=_sanitize(pm.sender_name, 180),
-                    recipient_emails=_sanitize(",".join(pm.recipients)),
-                    subject=_sanitize(pm.subject, 500),
-                    body_text=_sanitize(pm.body_text),
-                    body_html=_sanitize(pm.body_html),
-                    received_at=pm.received_at,
-                    has_attachments=bool(pm.attachments),
-                )
-                db.add(msg)
-                db.flush()
-                for a in pm.attachments:
-                    db.add(Attachment(
-                        message_id=msg.id,
-                        filename=_sanitize(a.filename, 255),
-                        mime_type=_sanitize(a.mime_type, 120),
-                        size=a.size,
-                        external_attachment_id=_sanitize(a.external_id, 255),
-                    ))
-                if pm.received_at > demand.last_message_at:
-                    demand.last_message_at = pm.received_at
-                log_event(
-                    db, event_type="MESSAGE_RECEIVED",
-                    description=f"Nova mensagem de {pm.sender_email}",
-                    demand_id=demand.id, user_id=actor.id if actor else None,
-                    metadata={"external_message_id": pm.external_id}, commit=False,
-                )
-            new_messages += 1
-        except Exception as e:
-            failed_count += 1
-            log.warning("[sync] FASE 2: msg %s falhou: %s", pm.external_id, e)
-            continue
-        SYNC_STATE.tick(fetched=fetched_count, new_messages=new_messages, new_demands=new_demands,
-                        last=f"💾 Salvando {new_messages}/{len(downloaded)}: {pm.subject or pm.sender_email}")
-        if new_messages % 200 == 0:
-            db.commit()
-
-    try:
-        db.commit()
-    except Exception:
-        pass
-
-    log_event(
-        db, event_type="SYNC_COMPLETED",
-        description=f"Sync {label}: {new_demands} demandas, {new_messages} msgs",
-        user_id=actor.id if actor else None,
-        metadata={"account_id": account_id, "new_demands": new_demands, "new_messages": new_messages},
-    )
-    log.info("[sync] %s: %d novas mensagens, %d novas demandas", label, new_messages, new_demands)
-    return len(all_ids), new_demands, new_messages
+    log.info("[sync] %s: CONCLUÍDO — %d msgs, %d demandas", label, total_new_messages, total_new_demands)
+    return len(all_ids), total_new_demands, total_new_messages
 
 
 def sync_inbox(db: Session, actor: Optional[User] = None, since: Optional[datetime] = None, limit: int = 100000) -> dict:
     if not SYNC_STATE.try_start():
         log.info("[sync] já em execução, pulando")
         return {"new_demands": 0, "new_messages": 0, "scanned": 0, "skipped": True}
+
+    # Se não há mensagens no banco (primeiro sync), limita pela data configurada
+    if since is None:
+        from app.core.config import settings as _settings
+        from app.core.database import SessionLocal as _SL
+        _db2 = _SL()
+        try:
+            last = _last_received_at(_db2)
+        finally:
+            _db2.close()
+        if last is None and _settings.SYNC_INITIAL_DAYS > 0:
+            since = datetime.utcnow() - timedelta(days=_settings.SYNC_INITIAL_DAYS)
+            log.info("[sync] primeiro sync: limitando a %d dias (%s)", _settings.SYNC_INITIAL_DAYS, since.date())
+        else:
+            since = last
 
     log.info("[sync] iniciando ...")
     accounts_to_sync = _get_accounts_to_sync(db)

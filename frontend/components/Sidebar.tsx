@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { api, Folder, User } from "@/lib/api";
@@ -14,7 +15,7 @@ const NAV_ITEMS = [
   { href: "/unassigned", label: "Não atribuídas" },
 ];
 
-export function Sidebar({ user }: { user: User | null }) {
+export function Sidebar({ user, isOpen, onClose }: { user: User | null; isOpen?: boolean; onClose?: () => void }) {
   const path = usePathname();
   const isAdmin = user?.role === "ADMIN";
   const [themeId, setThemeId] = useState<ThemeId>("cinza");
@@ -90,13 +91,24 @@ export function Sidebar({ user }: { user: User | null }) {
   const theme = getThemeConfig(themeId);
 
   return (
-    <aside className={`w-60 shrink-0 ${theme.sidebar} text-gray-100 min-h-screen flex flex-col`}>
-      <div className="px-5 py-5 border-b border-white/10 flex items-center justify-between">
-        <div>
-          <div className="text-sm uppercase tracking-wider text-gray-400">Jurídico</div>
-          <div className="font-semibold text-lg">E-mails</div>
+    <aside className={`fixed md:relative inset-y-0 left-0 z-50 md:z-auto w-60 shrink-0 ${theme.sidebar} text-gray-100 min-h-screen flex flex-col transition-transform duration-200 ease-in-out ${isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
+      <div className="px-4 py-4 border-b border-white/10 flex items-center justify-between gap-2">
+        <div className="bg-white rounded-lg px-2 py-1.5 shadow-sm">
+          <Image src="/logo.png" alt="Andrade Alves Advogados" width={130} height={48} className="object-contain" priority />
         </div>
-        <NotificationBell />
+        <div className="flex items-center gap-1">
+          <NotificationBell />
+          <button
+            className="md:hidden text-gray-400 hover:text-white p-1 rounded"
+            onClick={onClose}
+            aria-label="Fechar menu"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">

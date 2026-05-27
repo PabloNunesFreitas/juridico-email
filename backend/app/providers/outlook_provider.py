@@ -78,7 +78,7 @@ class OutlookEmailProvider(EmailProvider):
         if refresh:
             data["grant_type"] = "refresh_token"
             data["refresh_token"] = refresh
-            data["scope"] = "https://graph.microsoft.com/Mail.Read offline_access User.Read"
+            data["scope"] = "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.Send offline_access User.Read"
         else:
             data["grant_type"] = "client_credentials"
             data["scope"] = "https://graph.microsoft.com/.default"

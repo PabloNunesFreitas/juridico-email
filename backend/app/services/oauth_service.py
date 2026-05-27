@@ -75,7 +75,7 @@ def _outlook_auth_url(state: str, base_url: str, client_id: str, tenant: str) ->
         "response_type": "code",
         "redirect_uri": _redirect_uri(base_url),
         "response_mode": "query",
-        "scope": "Mail.Read offline_access User.Read",
+        "scope": "Mail.Read Mail.Send offline_access User.Read",
         "prompt": "consent",
         "state": state,
     }
@@ -134,7 +134,7 @@ def _exchange_outlook(code: str, base_url: str, client_id: str, client_secret: s
             "code": code,
             "redirect_uri": _redirect_uri(base_url),
             "grant_type": "authorization_code",
-            "scope": "Mail.Read offline_access User.Read",
+            "scope": "Mail.Read Mail.Send offline_access User.Read",
         },
         timeout=30,
     )

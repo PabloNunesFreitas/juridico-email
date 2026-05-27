@@ -32,7 +32,7 @@ from app.core.config import settings
 
 
 REDIRECT_URI = "http://localhost:8765/callback"
-SCOPES = "Mail.Read offline_access User.Read"
+SCOPES = "Mail.Read Mail.Send offline_access User.Read"
 PORT = 8765
 
 

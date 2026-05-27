@@ -38,3 +38,5 @@ services:
         value: "60"
       - key: SELF_PING_URL
         sync: false
+      - key: SYNC_INITIAL_DAYS
+        value: "180"

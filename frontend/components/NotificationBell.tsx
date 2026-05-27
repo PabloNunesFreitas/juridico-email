@@ -7,10 +7,30 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const ref = useRef<HTMLDivElement>(null);
+  const prevCount = useRef(0);
+
+  function playSound() {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.45);
+    } catch {}
+  }
 
   async function loadCount() {
     try {
       const { count: n } = await api.unreadCount();
+      if (n > prevCount.current) playSound();
+      prevCount.current = n;
       setCount(n);
     } catch {}
   }

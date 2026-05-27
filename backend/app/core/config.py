@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Keep-alive para Render (deixar vazio em desenvolvimento local)
     SELF_PING_URL: str = ""
 
+    # Limite de dias para o primeiro sync (0 = sem limite)
+    SYNC_INITIAL_DAYS: int = 180
+
     class Config:
         env_file = ".env"
         case_sensitive = True
