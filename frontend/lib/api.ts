@@ -217,7 +217,7 @@ export const api = {
     request<Demand>(`/api/v1/demands/${demandId}/co-assign`, { method: "POST", body: JSON.stringify({ user_id }) }),
   coUnassign: (demandId: number, shareId: number) =>
     request<Demand>(`/api/v1/demands/${demandId}/co-assign/${shareId}`, { method: "DELETE" }),
-  composeEmail: (data: { to_emails: string[]; cc: string[]; subject: string; body_text: string }) =>
+  composeEmail: (data: { to_emails: string[]; cc: string[]; subject: string; body_text: string; account_id?: number }) =>
     request<{ ok: boolean }>("/api/v1/demands/compose", { method: "POST", body: JSON.stringify(data) }),
 
   listLogs: (params: Record<string, any> = {}) => {

@@ -24,6 +24,7 @@ class ComposeIn(BaseModel):
     cc: List[str] = Field(default_factory=list)
     subject: str
     body_text: str
+    account_id: Optional[int] = None
 
 
 class AssignIn(BaseModel):

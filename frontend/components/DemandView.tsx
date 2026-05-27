@@ -43,6 +43,7 @@ export function DemandView({ source, title }: Props) {
   const [composeCc, setComposeCc] = useState("");
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
+  const [composeAccountId, setComposeAccountId] = useState<number | null>(null);
   const [composeSending, setComposeSending] = useState(false);
   const [composeError, setComposeError] = useState<string | null>(null);
 
@@ -335,13 +336,14 @@ export function DemandView({ source, title }: Props) {
     setComposeError(null);
     try {
       const ccList = composeCc.split(",").map(s => s.trim()).filter(Boolean);
-      await api.composeEmail({ to_emails: composeTo, cc: ccList, subject: composeSubject.trim(), body_text: composeBody.trim() });
+      await api.composeEmail({ to_emails: composeTo, cc: ccList, subject: composeSubject.trim(), body_text: composeBody.trim(), account_id: composeAccountId ?? undefined });
       setComposeOpen(false);
       setComposeTo([]);
       setComposeToInput("");
       setComposeCc("");
       setComposeSubject("");
       setComposeBody("");
+      setComposeAccountId(null);
       toast("E-mail enviado!", "success");
     } catch (e: any) {
       setComposeError(e.message);
@@ -468,6 +470,24 @@ export function DemandView({ source, title }: Props) {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6">
             <h2 className="text-lg font-semibold mb-4">Novo E-mail</h2>
+            {/* Conta de envio */}
+            {accounts.length > 1 && (
+              <div className="mb-3">
+                <label className="text-xs text-gray-500 uppercase font-medium">Enviar de:</label>
+                <select
+                  className="input text-sm mt-1 w-full"
+                  value={composeAccountId ?? ""}
+                  onChange={e => setComposeAccountId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">Conta padrão</option>
+                  {accounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.email_address} ({acc.provider})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {/* Para */}
             <div className="mb-3">
               <label className="text-xs text-gray-500 uppercase font-medium">Para:</label>

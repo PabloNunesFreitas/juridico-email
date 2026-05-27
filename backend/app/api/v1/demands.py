@@ -640,7 +640,10 @@ def compose_email(
 ):
     """Envia um novo e-mail (não vinculado a uma demanda existente)."""
     from app.models.email_account import EmailAccount
-    account = db.query(EmailAccount).filter(EmailAccount.active == True).first()  # noqa: E712
+    if payload.account_id:
+        account = db.query(EmailAccount).filter(EmailAccount.id == payload.account_id, EmailAccount.active == True).first()  # noqa: E712
+    else:
+        account = db.query(EmailAccount).filter(EmailAccount.active == True).first()  # noqa: E712
     if not account:
         raise HTTPException(status_code=400, detail="Nenhuma conta de e-mail configurada")
     provider = get_provider_for_account(account)
