@@ -17,7 +17,7 @@ Para ativar:
 import base64
 from datetime import datetime, timezone
 from email.utils import parseaddr, parsedate_to_datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -284,11 +284,27 @@ class GmailEmailProvider(EmailProvider):
         data = resp.json().get("data", "")
         return _b64url_decode(data)
 
-    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None) -> str:
-        """Envia resposta por e-mail e retorna o external_id da mensagem enviada."""
+    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None, attachments: Optional[List[tuple]] = None) -> str:
+        """Envia resposta por e-mail e retorna o external_id da mensagem enviada.
+        attachments: lista de (filename, mime_type, bytes)
+        """
         import email.mime.text as _mime_text
+        import email.mime.multipart as _mime_multi
+        import email.mime.base as _mime_base
+        from email import encoders as _encoders
         subject_str = subject if subject.lower().startswith("re:") else f"Re: {subject}"
-        msg = _mime_text.MIMEText(body_text, "plain", "utf-8")
+        if attachments:
+            msg: Any = _mime_multi.MIMEMultipart()
+            msg.attach(_mime_text.MIMEText(body_text, "plain", "utf-8"))
+            for fname, mime_type, data in attachments:
+                main_type, sub_type = mime_type.split("/", 1) if "/" in mime_type else ("application", "octet-stream")
+                part = _mime_base.MIMEBase(main_type, sub_type)
+                part.set_payload(data)
+                _encoders.encode_base64(part)
+                part.add_header("Content-Disposition", "attachment", filename=fname)
+                msg.attach(part)
+        else:
+            msg = _mime_text.MIMEText(body_text, "plain", "utf-8")
         msg["To"] = to
         msg["From"] = from_addr
         msg["Subject"] = subject_str

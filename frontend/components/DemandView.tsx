@@ -5,11 +5,12 @@ import { ActionModal } from "@/components/ActionModal";
 import { toast } from "@/lib/toast";
 
 interface Props {
-  source: "all" | "my" | "unassigned" | "shared";
+  source: "all" | "my" | "unassigned" | "shared" | "folder";
   title: string;
+  folderId?: number;
 }
 
-export function DemandView({ source, title }: Props) {
+export function DemandView({ source, title, folderId }: Props) {
   const [demands, setDemands] = useState<Demand[]>([]);
   const [selected, setSelected] = useState<DemandDetail | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -46,6 +47,8 @@ export function DemandView({ source, title }: Props) {
   const [composeAccountId, setComposeAccountId] = useState<number | null>(null);
   const [composeSending, setComposeSending] = useState(false);
   const [composeError, setComposeError] = useState<string | null>(null);
+  const [composeFiles, setComposeFiles] = useState<File[]>([]);
+  const [replyFiles, setReplyFiles] = useState<File[]>([]);
 
   // Pastas (para mover)
   const [folders, setFolders] = useState<import("@/lib/api").Folder[]>([]);
@@ -139,6 +142,7 @@ export function DemandView({ source, title }: Props) {
       if (source === "my") data = await api.myDemands(params);
       else if (source === "unassigned") data = await api.unassignedDemands(params);
       else if (source === "shared") data = await api.sharedDemands();
+      else if (source === "folder" && folderId) data = await api.listFolderDemands(folderId);
       else data = await api.listDemands(params);
       setDemands(data);
     } catch (e: any) {
@@ -314,10 +318,11 @@ export function DemandView({ source, title }: Props) {
     setReplySuccess(false);
     try {
       const ccList = replyCc.split(",").map(s => s.trim()).filter(Boolean);
-      const updated = await api.replyDemand(selected.id, replyText.trim(), ccList, replyTo);
+      const updated = await api.replyDemand(selected.id, replyText.trim(), ccList, replyTo, replyFiles);
       setSelected(updated);
       setReplyText("");
       setReplyCc("");
+      setReplyFiles([]);
       setReplySuccess(true);
       setTimeout(() => setReplySuccess(false), 3000);
       await loadList();
@@ -336,7 +341,7 @@ export function DemandView({ source, title }: Props) {
     setComposeError(null);
     try {
       const ccList = composeCc.split(",").map(s => s.trim()).filter(Boolean);
-      await api.composeEmail({ to_emails: composeTo, cc: ccList, subject: composeSubject.trim(), body_text: composeBody.trim(), account_id: composeAccountId ?? undefined });
+      await api.composeEmail({ to_emails: composeTo, cc: ccList, subject: composeSubject.trim(), body_text: composeBody.trim(), account_id: composeAccountId ?? undefined, files: composeFiles });
       setComposeOpen(false);
       setComposeTo([]);
       setComposeToInput("");
@@ -344,6 +349,7 @@ export function DemandView({ source, title }: Props) {
       setComposeSubject("");
       setComposeBody("");
       setComposeAccountId(null);
+      setComposeFiles([]);
       toast("E-mail enviado!", "success");
     } catch (e: any) {
       setComposeError(e.message);
@@ -535,9 +541,24 @@ export function DemandView({ source, title }: Props) {
               <label className="text-xs text-gray-500 uppercase font-medium">Mensagem:</label>
               <textarea className="input text-sm mt-1 w-full" rows={6} placeholder="Digite a mensagem..." value={composeBody} onChange={e => setComposeBody(e.target.value)} />
             </div>
+            {/* Anexos */}
+            <div className="mb-3">
+              <label className="text-xs text-gray-500 uppercase font-medium">Anexos:</label>
+              <input type="file" multiple className="mt-1 text-sm w-full" onChange={e => setComposeFiles(Array.from(e.target.files ?? []))} />
+              {composeFiles.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {composeFiles.map((f, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full">
+                      📎 {f.name}
+                      <button type="button" onClick={() => setComposeFiles(prev => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
             {composeError && <div className="text-xs text-red-600 mb-2">{composeError}</div>}
             <div className="flex justify-end gap-2">
-              <button className="btn-secondary" onClick={() => { setComposeOpen(false); setComposeError(null); }}>Cancelar</button>
+              <button className="btn-secondary" onClick={() => { setComposeOpen(false); setComposeError(null); setComposeFiles([]); }}>Cancelar</button>
               <button className="btn-primary disabled:opacity-50" disabled={composeSending} onClick={sendCompose}>
                 {composeSending ? "Enviando..." : "Enviar"}
               </button>
@@ -1038,6 +1059,20 @@ export function DemandView({ source, title }: Props) {
                   onChange={(e) => setReplyText(e.target.value)}
                   disabled={replySending}
                 />
+                {/* Anexos na resposta */}
+                <div className="mt-2">
+                  <input type="file" multiple className="text-sm w-full" onChange={e => setReplyFiles(Array.from(e.target.files ?? []))} disabled={replySending} />
+                  {replyFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {replyFiles.map((f, i) => (
+                        <span key={i} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full">
+                          📎 {f.name}
+                          <button type="button" onClick={() => setReplyFiles(prev => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500">×</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {replyError && (
                   <div className="text-xs text-red-600 mt-1">{replyError}</div>
                 )}

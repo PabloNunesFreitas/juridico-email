@@ -200,7 +200,7 @@ export function Sidebar({ user, isOpen, onClose }: { user: User | null; isOpen?:
               ) : (
                 <Link
                   href={`/folder/${folder.id}`}
-                  className={`flex-1 flex items-center gap-2 px-3 py-1.5 rounded-md text-sm mr-10 ${path === `/folder/${folder.id}` ? `${theme.active} text-white` : theme.hover}`}
+                  className={`flex-1 flex items-center gap-2 px-3 py-1.5 rounded-md text-sm ${path === `/folder/${folder.id}` ? `${theme.active} text-white` : theme.hover}`}
                 >
                   <span className="text-gray-400 text-sm">📁</span>
                   <span className="flex-1 truncate text-sm">{folder.name}</span>

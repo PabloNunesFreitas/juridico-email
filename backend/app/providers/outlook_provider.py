@@ -151,19 +151,30 @@ class OutlookEmailProvider(EmailProvider):
         resp.raise_for_status()
         return [self._to_provider_msg(m) for m in resp.json().get("value", [])]
 
-    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None) -> str:
-        """Envia resposta via Microsoft Graph e retorna o id da mensagem enviada."""
+    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None, attachments: Optional[List[tuple]] = None) -> str:
+        """Envia resposta via Microsoft Graph e retorna o id da mensagem enviada.
+        attachments: lista de (filename, mime_type, bytes)
+        """
+        import base64 as _b64
         subject_str = subject if subject.lower().startswith("re:") else f"Re: {subject}"
-        body: dict = {
-            "message": {
-                "subject": subject_str,
-                "body": {"contentType": "Text", "content": body_text},
-                "toRecipients": [{"emailAddress": {"address": to}}],
-            },
-            "saveToSentItems": True,
+        msg: dict = {
+            "subject": subject_str,
+            "body": {"contentType": "Text", "content": body_text},
+            "toRecipients": [{"emailAddress": {"address": to}}],
         }
         if cc:
-            body["message"]["ccRecipients"] = [{"emailAddress": {"address": addr}} for addr in cc]
+            msg["ccRecipients"] = [{"emailAddress": {"address": addr}} for addr in cc]
+        if attachments:
+            msg["attachments"] = [
+                {
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    "name": fname,
+                    "contentType": mime_type,
+                    "contentBytes": _b64.b64encode(data).decode(),
+                }
+                for fname, mime_type, data in attachments
+            ]
+        body = {"message": msg, "saveToSentItems": True}
         url = f"{GRAPH_BASE}{self._user_path}/sendMail"
         resp = httpx.post(url, headers=self._headers(), json=body, timeout=30)
         resp.raise_for_status()

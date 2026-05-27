@@ -18,8 +18,12 @@ export default function UsersPage() {
   const [modal, setModal] = useState<TempCredModal | null>(null);
   const [copied, setCopied] = useState(false);
 
-  async function load() { setUsers(await api.listUsers()); }
+  async function load() { try { setUsers(await api.listUsers()); } catch {} }
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const id = setInterval(load, 15_000);
+    return () => clearInterval(id);
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

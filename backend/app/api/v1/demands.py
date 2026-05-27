@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import json
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
@@ -101,7 +102,7 @@ def my_demands(
     q: Optional[str] = Query(None),
     status: Optional[DemandStatus] = None,
 ):
-    query = _base_query(db).filter(Demand.assigned_user_id == user.id, Demand.archived == False)  # noqa: E712
+    query = _base_query(db).filter(Demand.assigned_user_id == user.id, Demand.archived == False, Demand.folder_id.is_(None))  # noqa: E712
     if status:
         query = query.filter(Demand.status == status)
     if q:
@@ -243,13 +244,21 @@ def change_status(demand_id: int, payload: StatusIn, db: Session = Depends(get_d
 
 
 @router.post("/{demand_id}/reply", response_model=DemandDetail)
-def reply_demand(
+async def reply_demand(
     demand_id: int,
-    payload: ReplyIn,
+    body_text: str = Form(...),
+    to_emails: str = Form("[]"),
+    cc: str = Form("[]"),
+    files: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Envia resposta por e-mail ao remetente da demanda."""
+    payload = ReplyIn(
+        body_text=body_text,
+        to_emails=json.loads(to_emails) or None,
+        cc=json.loads(cc),
+    )
     demand = (
         _base_query(db)
         .options(joinedload(Demand.messages))
@@ -271,6 +280,11 @@ def reply_demand(
     if not primary_to:
         raise HTTPException(status_code=400, detail="Informe ao menos um destinatário")
 
+    attachments_data = []
+    for f in files:
+        content = await f.read()
+        attachments_data.append((f.filename or "arquivo", f.content_type or "application/octet-stream", content))
+
     try:
         ext_id = provider.send_reply(
             to=primary_to[0],
@@ -279,6 +293,7 @@ def reply_demand(
             body_text=payload.body_text,
             thread_id=demand.external_thread_id or None,
             cc=(primary_to[1:] + (payload.cc or [])) or None,
+            attachments=attachments_data or None,
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {e}")
@@ -633,27 +648,41 @@ def join_shared_demand(
 # ── Compor novo e-mail ───────────────────────────────────────────────────────
 
 @router.post("/compose")
-def compose_email(
-    payload: ComposeIn,
+async def compose_email(
+    to_emails: str = Form(...),
+    cc: str = Form("[]"),
+    subject: str = Form(...),
+    body_text: str = Form(...),
+    account_id: Optional[int] = Form(None),
+    files: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Envia um novo e-mail (não vinculado a uma demanda existente)."""
     from app.models.email_account import EmailAccount
-    if payload.account_id:
-        account = db.query(EmailAccount).filter(EmailAccount.id == payload.account_id, EmailAccount.active == True).first()  # noqa: E712
+    to_list: List[str] = json.loads(to_emails)
+    cc_list: List[str] = json.loads(cc)
+    if account_id:
+        account = db.query(EmailAccount).filter(EmailAccount.id == account_id, EmailAccount.active == True).first()  # noqa: E712
     else:
         account = db.query(EmailAccount).filter(EmailAccount.active == True).first()  # noqa: E712
     if not account:
         raise HTTPException(status_code=400, detail="Nenhuma conta de e-mail configurada")
+
+    attachments_data = []
+    for f in files:
+        content = await f.read()
+        attachments_data.append((f.filename or "arquivo", f.content_type or "application/octet-stream", content))
+
     provider = get_provider_for_account(account)
     try:
         provider.send_reply(
-            to=payload.to_emails[0],
+            to=to_list[0],
             from_addr=account.email_address,
-            subject=payload.subject,
-            body_text=payload.body_text,
-            cc=(payload.to_emails[1:] + payload.cc) or None,
+            subject=subject,
+            body_text=body_text,
+            cc=(to_list[1:] + cc_list) or None,
+            attachments=attachments_data or None,
         )
     except NotImplementedError:
         raise HTTPException(status_code=400, detail="Provider atual não suporta envio de e-mail")
