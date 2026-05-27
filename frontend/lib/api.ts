@@ -12,6 +12,7 @@ export interface EmailAccount {
   email_address: string;
   color: string;
   active: boolean;
+  needs_reconnect: boolean;
 }
 
 export interface Folder {

@@ -306,6 +306,17 @@ def sync_inbox(db: Session, actor: Optional[User] = None, since: Optional[dateti
             total_new_messages += nm
         except Exception as e:
             last_error = str(e)
+            # Detecta erros de autenticação e marca conta para reconexão
+            err_low = str(e).lower()
+            is_auth = any(kw in err_low for kw in ("401", "unauthorized", "invalid_grant", "invalid_token", "token", "credential", "403"))
+            if is_auth and account_id:
+                try:
+                    acc = db.query(EmailAccount).filter(EmailAccount.id == account_id).first()
+                    if acc:
+                        acc.needs_reconnect = True
+                        db.commit()
+                except Exception:
+                    pass
             continue
 
     SYNC_STATE.finish(error=last_error)

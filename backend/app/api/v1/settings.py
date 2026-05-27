@@ -137,6 +137,7 @@ class AccountOut(BaseModel):
     email_address: str
     color: str
     active: bool
+    needs_reconnect: bool = False
 
     class Config:
         from_attributes = True

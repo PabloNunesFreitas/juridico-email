@@ -115,6 +115,10 @@ def oauth_callback(
         acc = oauth_service.callback(db, code=code, state=state, base_url=_public_base_url(request))
     except Exception as e:
         return HTMLResponse(f"<h2>Falha ao trocar tokens</h2><pre>{e}</pre>", status_code=400)
+    # Reconexão bem-sucedida: limpa flag de reconexão necessária
+    if acc.needs_reconnect:
+        acc.needs_reconnect = False
+        db.commit()
     log_event(db, event_type="OAUTH_CONNECTED", description=f"Conta {acc.provider} conectada: {acc.email_address}", metadata={"provider": acc.provider, "email": acc.email_address})
     # Dispara sync inicial em background — popup fecha imediatamente
     background_tasks.add_task(_sync_in_background)

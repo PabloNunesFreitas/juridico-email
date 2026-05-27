@@ -393,6 +393,18 @@ export default function SettingsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">{acc.email_address}</div>
                   <div className="text-xs text-gray-500">{acc.provider}</div>
+                  {acc.needs_reconnect && (
+                    <div className="mt-1 flex items-center gap-2 bg-red-50 border border-red-200 rounded px-2 py-1">
+                      <span className="text-xs text-red-700 font-medium">⚠️ Token expirado — reconexão necessária</span>
+                      <button
+                        className="text-xs bg-red-600 hover:bg-red-700 text-white px-2 py-0.5 rounded font-medium whitespace-nowrap"
+                        onClick={() => connectWithCredentials(acc.provider as "gmail" | "outlook")}
+                        disabled={busy}
+                      >
+                        Reconectar
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <button
                   className="btn-danger text-xs py-1 px-2"
