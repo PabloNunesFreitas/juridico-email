@@ -37,6 +37,15 @@ export function ChatPanel() {
     router.push(`/inbox?demand=${demandId}`);
   }
 
+  async function dismiss(notificationId: number, e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      await api.dismissMention(notificationId);
+      setMentions(prev => prev.filter(m => m.notification_id !== notificationId));
+      setCount(prev => Math.max(0, prev - 1));
+    } catch {}
+  }
+
   return (
     <div ref={ref} className="fixed bottom-6 right-6 z-50">
       {/* Painel deslizante */}
@@ -47,7 +56,7 @@ export function ChatPanel() {
             <button onClick={() => setOpen(false)} className="text-blue-200 hover:text-white text-lg leading-none">×</button>
           </div>
 
-          <div className="overflow-y-auto max-h-96 divide-y divide-gray-100">
+          <div className="overflow-y-auto max-h-96">
             {mentions.length === 0 ? (
               <div className="p-6 text-sm text-gray-400 text-center">
                 Nenhuma menção pendente.<br />
@@ -55,20 +64,26 @@ export function ChatPanel() {
               </div>
             ) : (
               mentions.map(m => (
-                <button
-                  key={m.notification_id}
-                  onClick={() => goToDemand(m.demand_id)}
-                  className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors"
-                >
-                  <div className="flex items-start gap-2">
-                    <span className="text-yellow-500 text-base mt-0.5 shrink-0">⏳</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-800 truncate">{m.demand_subject}</p>
-                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{m.message}</p>
-                      <p className="text-[10px] text-gray-400 mt-1">{new Date(m.created_at).toLocaleString("pt-BR")}</p>
+                <div key={m.notification_id} className="flex items-stretch border-b border-gray-100 last:border-0 hover:bg-blue-50 transition-colors group">
+                  <button
+                    onClick={() => goToDemand(m.demand_id)}
+                    className="flex-1 text-left px-4 py-3"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-yellow-500 text-base mt-0.5 shrink-0">⏳</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-800 truncate">{m.demand_subject}</p>
+                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{m.message}</p>
+                        <p className="text-[10px] text-gray-400 mt-1">{new Date(m.created_at).toLocaleString("pt-BR")}</p>
+                      </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                  <button
+                    onClick={(e) => dismiss(m.notification_id, e)}
+                    className="px-3 text-gray-300 hover:text-red-400 transition-colors self-center text-lg leading-none opacity-0 group-hover:opacity-100"
+                    title="Dispensar"
+                  >×</button>
+                </div>
               ))
             )}
           </div>

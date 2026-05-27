@@ -69,6 +69,17 @@ def mark_read(notif_id: int, db: Session = Depends(get_db), user: User = Depends
     return {"ok": True}
 
 
+@router.patch("/{notif_id}/dismiss")
+def dismiss_mention(notif_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Marca uma @menção como respondida (dispensar sem comentar)."""
+    n = db.query(Notification).filter(Notification.id == notif_id, Notification.user_id == user.id).first()
+    if n:
+        n.responded = True
+        n.read = True
+        db.commit()
+    return {"ok": True}
+
+
 @router.get("/pending-mentions", response_model=List[int])
 def pending_mentions(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Retorna demand_ids onde o usuário tem @menções não respondidas."""

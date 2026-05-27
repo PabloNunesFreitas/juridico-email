@@ -221,6 +221,7 @@ export const api = {
   markRead: (id: number) => request<{ ok: boolean }>(`/api/v1/notifications/${id}/read`, { method: "PATCH" }),
   chatMentions: () => request<ChatMention[]>("/api/v1/notifications/chat"),
   pendingMentions: () => request<number[]>("/api/v1/notifications/pending-mentions"),
+  dismissMention: (id: number) => request<{ ok: boolean }>(`/api/v1/notifications/${id}/dismiss`, { method: "PATCH" }),
 
   setTheme: (theme: string) =>
     request<User>("/api/v1/auth/me/theme", { method: "PATCH", body: JSON.stringify({ theme }) }),
