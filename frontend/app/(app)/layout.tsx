@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { SyncBanner } from "@/components/SyncBanner";
 import { Toaster } from "@/components/Toaster";
+import { ChatPanel } from "@/components/ChatPanel";
 import { api, User } from "@/lib/api";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -44,6 +45,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="p-3 md:p-6">{children}</div>
       </main>
       <Toaster />
+      <ChatPanel />
     </div>
   );
 }

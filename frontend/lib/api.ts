@@ -74,6 +74,14 @@ export interface Notification {
   type: string;
   message: string;
   read: boolean;
+  responded: boolean;
+  created_at: string;
+}
+export interface ChatMention {
+  notification_id: number;
+  demand_id: number;
+  demand_subject: string;
+  message: string;
   created_at: string;
 }
 export interface DemandDetail extends Demand { messages: Message[]; }
@@ -211,6 +219,8 @@ export const api = {
   unreadCount: () => request<{ count: number }>("/api/v1/notifications/unread-count"),
   markAllRead: () => request<{ ok: boolean }>("/api/v1/notifications/read-all", { method: "POST" }),
   markRead: (id: number) => request<{ ok: boolean }>(`/api/v1/notifications/${id}/read`, { method: "PATCH" }),
+  chatMentions: () => request<ChatMention[]>("/api/v1/notifications/chat"),
+  pendingMentions: () => request<number[]>("/api/v1/notifications/pending-mentions"),
 
   setTheme: (theme: string) =>
     request<User>("/api/v1/auth/me/theme", { method: "PATCH", body: JSON.stringify({ theme }) }),

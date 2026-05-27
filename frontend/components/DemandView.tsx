@@ -74,6 +74,9 @@ export function DemandView({ source, title, folderId }: Props) {
   const [assumingShared, setAssumingShared] = useState(false);
   const [dismissedAssume, setDismissedAssume] = useState<Set<number>>(new Set());
 
+  // Menções pendentes (@menção não respondida)
+  const [pendingMentionIds, setPendingMentionIds] = useState<Set<number>>(new Set());
+
   // Seleção múltipla
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -193,6 +196,12 @@ export function DemandView({ source, title, folderId }: Props) {
     api.listUsers().then(setUsers).catch(() => {});
     api.listAccounts().then(setAccounts).catch(() => {});
     api.listFolders().then(setFolders).catch(() => {});
+    function loadPending() {
+      api.pendingMentions().then(ids => setPendingMentionIds(new Set(ids))).catch(() => {});
+    }
+    loadPending();
+    const t = setInterval(loadPending, 30_000);
+    return () => clearInterval(t);
   }, []);
 
   async function closeArchiveDemand(d: Demand) {
@@ -229,6 +238,7 @@ export function DemandView({ source, title, folderId }: Props) {
       setNewComment("");
       setMentionQuery(null);
       setTimeout(() => commentsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+      api.pendingMentions().then(ids => setPendingMentionIds(new Set(ids))).catch(() => {});
     } catch (e: any) { toast(e.message, "error"); }
     setCommentSending(false);
   }
@@ -717,6 +727,9 @@ export function DemandView({ source, title, folderId }: Props) {
                       <span className="badge bg-green-100 text-green-800">{d.assigned_user.name}</span>
                     ) : (
                       <span className="badge bg-amber-100 text-amber-800">Sem responsável</span>
+                    )}
+                    {pendingMentionIds.has(d.id) && (
+                      <span className="badge bg-yellow-400 text-gray-900 font-semibold" title="Você tem @menção não respondida">⏳ Responder</span>
                     )}
                     {d.email_account && accounts.length > 1 && (
                       <span

@@ -12,6 +12,7 @@ class Notification(Base):
     type = Column(String(50), nullable=False)
     message = Column(String(500), nullable=False)
     read = Column(Boolean, default=False, nullable=False, index=True)
+    responded = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user = relationship("User")
