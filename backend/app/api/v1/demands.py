@@ -312,7 +312,7 @@ async def reply_demand(
         body_text=payload.body_text,
         body_html=None,
         received_at=now,
-        has_attachments=False,
+        has_attachments=bool(attachments_data),
     )
     db.add(msg)
     demand.last_message_at = now
@@ -528,6 +528,13 @@ def add_comment(
                 user_id=uid, demand_id=demand_id, type="COMMENT_MENTION",
                 message=f"{user.name} mencionou você em: {subject_preview}",
             ))
+    # Marca menções pendentes do autor como respondidas
+    db.query(Notification).filter(
+        Notification.user_id == user.id,
+        Notification.demand_id == demand_id,
+        Notification.type == "COMMENT_MENTION",
+        Notification.responded == False,  # noqa: E712
+    ).update({"responded": True})
     db.commit()
     db.refresh(comment)
     return CommentOut(

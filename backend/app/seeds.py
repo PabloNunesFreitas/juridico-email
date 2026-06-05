@@ -19,6 +19,9 @@ _COLUMN_MIGRATIONS = [
     "ALTER TABLE demand_shares ADD COLUMN IF NOT EXISTS is_co_assignee BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS responded BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE email_accounts ADD COLUMN IF NOT EXISTS needs_reconnect BOOLEAN NOT NULL DEFAULT FALSE",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_messages_external_id ON messages (external_message_id) WHERE external_message_id IS NOT NULL",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_demands_thread_id ON demands (external_thread_id) WHERE external_thread_id IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS ix_notifications_demand_id ON notifications (demand_id)",
 ]
 
 

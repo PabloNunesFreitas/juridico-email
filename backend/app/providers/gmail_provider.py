@@ -115,6 +115,7 @@ class GmailEmailProvider(EmailProvider):
         """account: EmailAccount ORM object. Se None, usa credenciais globais (legado)."""
         self._account = account
         self._token: Optional[str] = None
+        self._token_expiry: float = 0.0
         self._tls = _threading.local()
 
     def _client_for_thread(self) -> httpx.Client:
@@ -160,7 +161,8 @@ class GmailEmailProvider(EmailProvider):
         return client_id, client_secret, refresh
 
     def _get_token(self) -> str:
-        if self._token:
+        import time as _time_mod
+        if self._token and _time_mod.time() < self._token_expiry - 60:
             return self._token
         client_id, client_secret, refresh = self._get_credentials()
         if not client_id or not refresh:
@@ -176,7 +178,9 @@ class GmailEmailProvider(EmailProvider):
             timeout=30,
         )
         resp.raise_for_status()
-        self._token = resp.json()["access_token"]
+        data = resp.json()
+        self._token = data["access_token"]
+        self._token_expiry = _time_mod.time() + data.get("expires_in", 3600)
         return self._token
 
     def _headers(self) -> dict:
@@ -237,7 +241,7 @@ class GmailEmailProvider(EmailProvider):
         ids: List[str] = []
         page_token: Optional[str] = None
         per_page = 500  # Gmail aceita até 500 por página no list
-        q = "-in:spam -in:trash"
+        q = "-in:spam -in:trash -in:drafts"
         if since:
             q += f" after:{int(since.timestamp())}"
         while len(ids) < limit:

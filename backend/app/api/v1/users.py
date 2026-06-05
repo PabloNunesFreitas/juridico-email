@@ -22,7 +22,7 @@ def _generate_password(length: int = 12) -> str:
 
 
 @router.get("", response_model=List[UserOut])
-def list_users(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def list_users(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     return db.query(User).order_by(User.created_at.desc()).all()
 
 

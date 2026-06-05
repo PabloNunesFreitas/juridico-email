@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -12,7 +12,7 @@ class DemandShare(Base):
     shared_with_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     note = Column(String(500), nullable=True)
     is_co_assignee = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     demand = relationship("Demand")
     shared_by = relationship("User", foreign_keys=[shared_by_id])

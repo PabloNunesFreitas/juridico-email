@@ -106,7 +106,9 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = isFormData ? {} : { "Content-Type": "application/json", ...(opts.headers as any) };
   const t = token();
   if (t) headers["Authorization"] = `Bearer ${t}`;
-  const res = await fetch(`${API_URL}${path}`, { ...opts, headers });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30_000);
+  const res = await fetch(`${API_URL}${path}`, { ...opts, headers, signal: controller.signal }).finally(() => clearTimeout(timeoutId));
   if (res.status === 401 && typeof window !== "undefined") {
     localStorage.removeItem("token");
     window.location.href = "/login";

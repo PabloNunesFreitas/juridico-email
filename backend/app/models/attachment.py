@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
@@ -16,6 +16,6 @@ class Attachment(Base):
     size = Column(Integer, nullable=True)
     external_attachment_id = Column(String(255), nullable=True)
     storage_path = Column(String(500), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     message = relationship("Message", back_populates="attachments")

@@ -2,11 +2,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ChatMention } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 export function ChatPanel() {
   const [open, setOpen] = useState(false);
   const [mentions, setMentions] = useState<ChatMention[]>([]);
-  const [count, setCount] = useState(0);
   const router = useRouter();
   const ref = useRef<HTMLDivElement>(null);
 
@@ -14,7 +14,6 @@ export function ChatPanel() {
     try {
       const data = await api.chatMentions();
       setMentions(data);
-      setCount(data.length);
     } catch {}
   }
 
@@ -42,8 +41,9 @@ export function ChatPanel() {
     try {
       await api.dismissMention(notificationId);
       setMentions(prev => prev.filter(m => m.notification_id !== notificationId));
-      setCount(prev => Math.max(0, prev - 1));
-    } catch {}
+    } catch (err: any) {
+      toast(err.message || "Erro ao dispensar menção", "error");
+    }
   }
 
   return (
@@ -103,9 +103,9 @@ export function ChatPanel() {
         title="Menções pendentes"
       >
         <span className="text-xl">💬</span>
-        {count > 0 && (
+        {mentions.length > 0 && (
           <span className="absolute -top-1 -right-1 bg-yellow-400 text-gray-900 text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center leading-none shadow">
-            {count > 9 ? "9+" : count}
+            {mentions.length > 9 ? "9+" : mentions.length}
           </span>
         )}
       </button>

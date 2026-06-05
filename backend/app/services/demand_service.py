@@ -9,10 +9,16 @@ from app.services.audit_service import log_event
 
 
 def find_continuity_user(db: Session, sender_email: str) -> Optional[int]:
-    rule = db.query(AssignmentRule).filter(
-        AssignmentRule.sender_email == sender_email.lower(),
-        AssignmentRule.active.is_(True),
-    ).first()
+    rule = (
+        db.query(AssignmentRule)
+        .join(User, User.id == AssignmentRule.assigned_user_id)
+        .filter(
+            AssignmentRule.sender_email == sender_email.lower(),
+            AssignmentRule.active.is_(True),
+            User.active.is_(True),
+        )
+        .first()
+    )
     return rule.assigned_user_id if rule else None
 
 

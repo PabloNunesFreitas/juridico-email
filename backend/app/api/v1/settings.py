@@ -176,21 +176,16 @@ def delete_account(account_id: int, db: Session = Depends(get_db), admin: User =
     demand_ids_this = [
         r[0] for r in db.query(Demand.id).filter(Demand.email_account_id == account_id).all()
     ]
-    demand_ids_null = [
-        r[0] for r in db.query(Demand.id).filter(Demand.email_account_id.is_(None)).all()
-    ]
-    all_demand_ids = list(set(demand_ids_this + demand_ids_null))
+    all_demand_ids = demand_ids_this
     n_demands = len(all_demand_ids)
 
-    # Remove audit logs vinculados a essas demandas
+    # Remove audit logs vinculados apenas às demandas desta conta
     if all_demand_ids:
         db.query(AuditLog).filter(AuditLog.demand_id.in_(all_demand_ids)).delete(synchronize_session=False)
 
-    # Remove as demandas (mensagens e anexos caem por CASCADE no banco)
+    # Remove apenas as demandas desta conta (mensagens e anexos caem por CASCADE)
     if demand_ids_this:
         db.query(Demand).filter(Demand.email_account_id == account_id).delete(synchronize_session=False)
-    if demand_ids_null:
-        db.query(Demand).filter(Demand.email_account_id.is_(None)).delete(synchronize_session=False)
 
     acc.active = False
     acc.access_token = None

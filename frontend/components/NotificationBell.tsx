@@ -8,10 +8,12 @@ export function NotificationBell() {
   const [items, setItems] = useState<Notification[]>([]);
   const ref = useRef<HTMLDivElement>(null);
   const prevCount = useRef(0);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   function playSound() {
     try {
-      const ctx = new AudioContext();
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+      const ctx = audioCtxRef.current;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);

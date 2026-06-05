@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     APP_NAME: str = "Juridico Email Manager"
     DATABASE_URL: str = "postgresql+psycopg2://postgres:postgres@db:5432/juridico"
-    JWT_SECRET: str = "change-me-in-prod"
+    JWT_SECRET: str
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60 * 8
 
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     GMAIL_REFRESH_TOKEN: str = ""
 
     SEED_ADMIN_EMAIL: str = "admin@empresa.com.br"
-    SEED_ADMIN_PASSWORD: str = "admin123"
+    SEED_ADMIN_PASSWORD: str
 
     CORS_ORIGINS: str = "http://localhost:3000"
 

@@ -156,7 +156,11 @@ def _save_chunk(chunk: list, account_id, actor, label: str, chunk_num: int) -> t
                     )
                 nm += 1
             except Exception as e:
-                log.warning("[sync] chunk %d msg %s falhou: %s", chunk_num, pm.external_id, e)
+                from sqlalchemy.exc import IntegrityError
+                if isinstance(e, IntegrityError):
+                    log.debug("[sync] chunk %d msg %s duplicada, ignorando", chunk_num, pm.external_id)
+                else:
+                    log.warning("[sync] chunk %d msg %s falhou: %s", chunk_num, pm.external_id, e)
         chunk_db.commit()
     except Exception as e:
         log.error("[sync] chunk %d commit falhou: %s", chunk_num, e)
@@ -281,44 +285,45 @@ def sync_inbox(db: Session, actor: Optional[User] = None, since: Optional[dateti
         finally:
             _db2.close()
         if last is None and _settings.SYNC_INITIAL_DAYS > 0:
-            since = datetime.utcnow() - timedelta(days=_settings.SYNC_INITIAL_DAYS)
+            from datetime import timezone as _tz
+            since = datetime.now(_tz.utc) - timedelta(days=_settings.SYNC_INITIAL_DAYS)
             log.info("[sync] primeiro sync: limitando a %d dias (%s)", _settings.SYNC_INITIAL_DAYS, since.date())
         else:
             since = last
 
     log.info("[sync] iniciando ...")
-    accounts_to_sync = _get_accounts_to_sync(db)
-    if not accounts_to_sync:
-        SYNC_STATE.finish()
-        log.info("[sync] nenhuma conta conectada, pulando")
-        return {"new_demands": 0, "new_messages": 0, "scanned": 0, "skipped": True}
-    log.info("[sync] %d conta(s) para sincronizar", len(accounts_to_sync))
-
     total_scanned = total_new_demands = total_new_messages = 0
     last_error = None
 
-    for provider, account_id in accounts_to_sync:
-        label = f"conta #{account_id}" if account_id else "legado"
-        try:
-            scanned, nd, nm = _sync_one_account(db, provider, account_id, actor, since, limit, label)
-            total_scanned += scanned
-            total_new_demands += nd
-            total_new_messages += nm
-        except Exception as e:
-            last_error = str(e)
-            # Detecta erros de autenticação e marca conta para reconexão
-            err_low = str(e).lower()
-            is_auth = any(kw in err_low for kw in ("401", "unauthorized", "invalid_grant", "invalid_token", "token", "credential", "403"))
-            if is_auth and account_id:
-                try:
-                    acc = db.query(EmailAccount).filter(EmailAccount.id == account_id).first()
-                    if acc:
-                        acc.needs_reconnect = True
-                        db.commit()
-                except Exception:
-                    pass
-            continue
+    try:
+        accounts_to_sync = _get_accounts_to_sync(db)
+        if not accounts_to_sync:
+            log.info("[sync] nenhuma conta conectada, pulando")
+            return {"new_demands": 0, "new_messages": 0, "scanned": 0, "skipped": True}
+        log.info("[sync] %d conta(s) para sincronizar", len(accounts_to_sync))
 
-    SYNC_STATE.finish(error=last_error)
+        for provider, account_id in accounts_to_sync:
+            label = f"conta #{account_id}" if account_id else "legado"
+            try:
+                scanned, nd, nm = _sync_one_account(db, provider, account_id, actor, since, limit, label)
+                total_scanned += scanned
+                total_new_demands += nd
+                total_new_messages += nm
+            except Exception as e:
+                last_error = str(e)
+                err_low = str(e).lower()
+                is_auth = any(kw in err_low for kw in ("401", "unauthorized", "invalid_grant", "invalid_token", "token", "credential", "403"))
+                if is_auth and account_id:
+                    try:
+                        acc = db.query(EmailAccount).filter(EmailAccount.id == account_id).first()
+                        if acc:
+                            acc.needs_reconnect = True
+                            db.commit()
+                    except Exception:
+                        pass
+                continue
+    finally:
+        SYNC_STATE.finish(error=last_error)
+
     log.info("[sync] CONCLUIDO: %d msgs, %d demandas (%d contas)", total_new_messages, total_new_demands, len(accounts_to_sync))
     return {"new_demands": total_new_demands, "new_messages": total_new_messages, "scanned": total_scanned}

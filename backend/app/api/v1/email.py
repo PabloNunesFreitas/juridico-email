@@ -142,17 +142,21 @@ def oauth_disconnect(provider: str = Query(...), db: Session = Depends(get_db), 
     if provider not in ("gmail", "outlook"):
         raise HTTPException(status_code=400, detail="Provider inválido")
 
-    # Apaga tudo que veio de e-mails (cascata cuida de mensagens/anexos)
-    n_demands = db.query(Demand).count()
-    db.query(Demand).delete(synchronize_session=False)
-    # Limpa logs de eventos de sync/demand (mantém logs de auth/usuário)
-    db.query(AuditLog).filter(AuditLog.event_type.in_([
-        "DEMAND_CREATED", "DEMAND_ASSIGNED", "DEMAND_AUTO_ASSIGNED",
-        "DEMAND_ASSUMED", "DEMAND_STATUS_CHANGED", "MESSAGE_RECEIVED",
-        "SYNC_COMPLETED", "SYNC_ERROR",
-    ])).delete(synchronize_session=False)
-    # Marca conta como inativa e remove tokens
+    # Coleta apenas as contas e demandas do provider específico
     accounts = db.query(EmailAccount).filter(EmailAccount.provider == provider).all()
+    account_ids = [a.id for a in accounts]
+
+    demand_ids = [
+        r[0] for r in db.query(Demand.id).filter(Demand.email_account_id.in_(account_ids)).all()
+    ] if account_ids else []
+    n_demands = len(demand_ids)
+
+    # Limpa logs vinculados apenas a essas demandas
+    if demand_ids:
+        db.query(AuditLog).filter(AuditLog.demand_id.in_(demand_ids)).delete(synchronize_session=False)
+        db.query(Demand).filter(Demand.email_account_id.in_(account_ids)).delete(synchronize_session=False)
+
+    # Marca contas do provider como inativas e remove tokens
     for acc in accounts:
         acc.active = False
         acc.access_token = None

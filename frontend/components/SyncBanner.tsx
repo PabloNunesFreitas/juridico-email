@@ -49,7 +49,7 @@ export function SyncBanner() {
       } catch {}
     }
     tick();
-    const id = setInterval(tick, 1500);
+    const id = setInterval(tick, 5000);
     return () => { alive = false; clearInterval(id); };
   }, []);
 

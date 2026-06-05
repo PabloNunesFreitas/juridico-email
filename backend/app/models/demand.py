@@ -1,5 +1,5 @@
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
@@ -34,7 +34,7 @@ class Demand(Base):
     __tablename__ = "demands"
 
     id = Column(Integer, primary_key=True, index=True)
-    external_thread_id = Column(String(255), index=True, nullable=True)
+    external_thread_id = Column(String(255), index=True, unique=True, nullable=True)
     sender_email = Column(String(180), index=True, nullable=False)
     sender_name = Column(String(180), nullable=True)
     subject = Column(String(500), nullable=True)
@@ -47,9 +47,9 @@ class Demand(Base):
     email_account_id = Column(Integer, ForeignKey("email_accounts.id"), nullable=True, index=True)
     folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True, index=True)
     archived = Column(Boolean, default=False, nullable=False, server_default="false")
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    last_message_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    last_message_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     assigned_user = relationship("User", foreign_keys=[assigned_user_id])
     email_account = relationship("EmailAccount", foreign_keys=[email_account_id])

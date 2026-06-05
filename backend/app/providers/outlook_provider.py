@@ -29,6 +29,7 @@ class OutlookEmailProvider(EmailProvider):
     def __init__(self, account=None) -> None:
         self._account = account
         self._token: Optional[str] = None
+        self._token_expiry: float = 0.0
         _, _, _, refresh = self._load_credentials()
         self._delegated: bool = bool(refresh)
 
@@ -65,7 +66,8 @@ class OutlookEmailProvider(EmailProvider):
         return "/me" if self._delegated else f"/users/{settings.CENTRAL_EMAIL}"
 
     def _get_token(self) -> str:
-        if self._token:
+        import time as _time_mod
+        if self._token and _time_mod.time() < self._token_expiry - 60:
             return self._token
         client_id, client_secret, tenant, refresh = self._load_credentials()
         if not client_id:
@@ -84,7 +86,9 @@ class OutlookEmailProvider(EmailProvider):
             data["scope"] = "https://graph.microsoft.com/.default"
         resp = httpx.post(url, data=data, timeout=30)
         resp.raise_for_status()
-        self._token = resp.json()["access_token"]
+        result = resp.json()
+        self._token = result["access_token"]
+        self._token_expiry = _time_mod.time() + result.get("expires_in", 3600)
         return self._token
 
     def _headers(self) -> dict:
@@ -109,17 +113,28 @@ class OutlookEmailProvider(EmailProvider):
             ],
         )
 
+    def _graph_get(self, url: str, params=None, next_link: Optional[str] = None) -> dict:
+        import time as _time_mod
+        for attempt in range(4):
+            resp = httpx.get(next_link or url, headers=self._headers(), params=None if next_link else params, timeout=30)
+            if resp.status_code == 429:
+                wait = int(resp.headers.get("Retry-After", "10"))
+                _time_mod.sleep(min(wait, 60))
+                continue
+            resp.raise_for_status()
+            return resp.json()
+        raise RuntimeError("Microsoft Graph rate limit excedido após várias tentativas")
+
     def list_message_ids(self, since: Optional[datetime] = None, limit: int = 5000) -> List[str]:
         ids: List[str] = []
         url = f"{GRAPH_BASE}{self._user_path}/messages"
-        params: dict = {"$top": "1000", "$select": "id", "$orderby": "receivedDateTime desc"}
+        filters = ["isJunk eq false", "isDraft eq false"]
         if since:
-            params["$filter"] = f"receivedDateTime ge {since.isoformat()}Z"
+            filters.append(f"receivedDateTime ge {since.isoformat()}Z")
+        params: dict = {"$top": "1000", "$select": "id", "$filter": " and ".join(filters)}
         next_link: Optional[str] = None
         while len(ids) < limit:
-            resp = httpx.get(next_link or url, headers=self._headers(), params=None if next_link else params, timeout=30)
-            resp.raise_for_status()
-            data = resp.json()
+            data = self._graph_get(url, params=params, next_link=next_link)
             for m in data.get("value", []):
                 ids.append(m["id"])
             next_link = data.get("@odata.nextLink")
@@ -150,6 +165,13 @@ class OutlookEmailProvider(EmailProvider):
         resp = httpx.get(url, headers=self._headers(), params=params, timeout=30)
         resp.raise_for_status()
         return [self._to_provider_msg(m) for m in resp.json().get("value", [])]
+
+    def get_attachment(self, message_id: str, attachment_id: str) -> bytes:
+        import base64 as _b64
+        url = f"{GRAPH_BASE}{self._user_path}/messages/{message_id}/attachments/{attachment_id}"
+        data = self._graph_get(url)
+        content = data.get("contentBytes", "")
+        return _b64.b64decode(content) if content else b""
 
     def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None, attachments: Optional[List[tuple]] = None) -> str:
         """Envia resposta via Microsoft Graph e retorna o id da mensagem enviada.

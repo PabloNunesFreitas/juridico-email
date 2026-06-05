@@ -101,37 +101,33 @@ export function DemandView({ source, title, folderId }: Props) {
 
   async function bulkAssume() {
     setBulkLoading(true);
-    try {
-      await Promise.all([...checkedIds].map(id => api.assumeDemand(id, false)));
-      setCheckedIds(new Set());
-      await loadList();
-    } catch (e: any) { setError(e.message); }
+    const results = await Promise.allSettled([...checkedIds].map(id => api.assumeDemand(id, false)));
+    const failed = results.filter(r => r.status === "rejected");
+    if (failed.length) setError(`${failed.length} demanda(s) falharam ao assumir`);
+    setCheckedIds(new Set());
+    await loadList();
     setBulkLoading(false);
   }
 
   async function bulkAssign(userId: number) {
     setBulkLoading(true);
-    try {
-      await Promise.all([...checkedIds].map(id => api.assignDemand(id, userId, false)));
-      setCheckedIds(new Set());
-      setBulkAssignUserId("");
-      await loadList();
-    } catch (e: any) { setError(e.message); }
+    const results = await Promise.allSettled([...checkedIds].map(id => api.assignDemand(id, userId, false)));
+    const failed = results.filter(r => r.status === "rejected");
+    if (failed.length) setError(`${failed.length} demanda(s) falharam ao atribuir`);
+    setCheckedIds(new Set());
+    setBulkAssignUserId("");
+    await loadList();
     setBulkLoading(false);
   }
 
   async function bulkUnassign() {
     if (!confirm(`Remover responsável de ${checkedIds.size} demanda(s) selecionada(s)?`)) return;
     setBulkLoading(true);
-    const ids = [...checkedIds];
-    const errors: string[] = [];
-    await Promise.all(ids.map(async id => {
-      try { await api.unassignDemand(id, false, false); }
-      catch (e: any) { errors.push(e.message); }
-    }));
+    const results = await Promise.allSettled([...checkedIds].map(id => api.unassignDemand(id, false, false)));
+    const failed = results.filter(r => r.status === "rejected");
     setCheckedIds(new Set());
     await loadList();
-    if (errors.length) setError(errors[0]);
+    if (failed.length) setError(`${failed.length} demanda(s) falharam ao remover responsável`);
     setBulkLoading(false);
   }
 
@@ -554,7 +550,12 @@ export function DemandView({ source, title, folderId }: Props) {
             {/* Anexos */}
             <div className="mb-3">
               <label className="text-xs text-gray-500 uppercase font-medium">Anexos:</label>
-              <input type="file" multiple className="mt-1 text-sm w-full" onChange={e => setComposeFiles(Array.from(e.target.files ?? []))} />
+              <input type="file" multiple className="mt-1 text-sm w-full" onChange={e => {
+                const files = Array.from(e.target.files ?? []);
+                const tooBig = files.filter(f => f.size > 10 * 1024 * 1024);
+                if (tooBig.length) { toast(`Arquivo muito grande (máx 10MB): ${tooBig[0].name}`, "error"); return; }
+                setComposeFiles(files);
+              }} />
               {composeFiles.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1">
                   {composeFiles.map((f, i) => (
@@ -1074,7 +1075,12 @@ export function DemandView({ source, title, folderId }: Props) {
                 />
                 {/* Anexos na resposta */}
                 <div className="mt-2">
-                  <input type="file" multiple className="text-sm w-full" onChange={e => setReplyFiles(Array.from(e.target.files ?? []))} disabled={replySending} />
+                  <input type="file" multiple className="text-sm w-full" disabled={replySending} onChange={e => {
+                    const files = Array.from(e.target.files ?? []);
+                    const tooBig = files.filter(f => f.size > 10 * 1024 * 1024);
+                    if (tooBig.length) { toast(`Arquivo muito grande (máx 10MB): ${tooBig[0].name}`, "error"); return; }
+                    setReplyFiles(files);
+                  }} />
                   {replyFiles.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {replyFiles.map((f, i) => (
