@@ -107,7 +107,44 @@ PARALLEL = 10       # workers paralelos de download
 CHUNK_SIZE = 200    # salva no banco a cada N mensagens baixadas (mantém RAM limitada)
 
 
-def _save_chunk(chunk: list, account_id, actor, label: str, chunk_num: int) -> tuple:
+def _download_and_cache_attachments(provider, pm, msg_db_id: int, account_id: Optional[int], db) -> None:
+    """
+    Baixa os bytes de cada anexo da mensagem via API e persiste em disco.
+
+    Erros de download individual são logados mas NÃO interrompem o sync:
+    o registro do anexo continua no banco com storage_path=None, permitindo
+    tentativa de fallback via API na hora do download pelo usuário.
+    """
+    from app.services import attachment_storage as _store
+
+    attachments = db.query(Attachment).filter(Attachment.message_id == msg_db_id).all()
+    for att in attachments:
+        if att.storage_path and _store.exists(att.storage_path):
+            # Já salvo em disco — nada a fazer.
+            continue
+        if not att.external_attachment_id or not pm.external_id:
+            log.warning("[sync] anexo id=%d sem external_id, pulando cache", att.id)
+            continue
+        try:
+            data = provider.get_attachment(pm.external_id, att.external_attachment_id)
+            rel = _store.save(
+                data=data,
+                account_id=account_id or 0,
+                message_external_id=pm.external_id,
+                att_db_id=att.id,
+                filename=att.filename or "attachment",
+            )
+            att.storage_path = rel
+            log.debug("[sync] anexo id=%d salvo em disco: %s", att.id, rel)
+        except Exception as exc:
+            # Falha de rede, quota, token — não bloqueia o restante.
+            log.warning(
+                "[sync] falha ao cachear anexo id=%d (%s): %s",
+                att.id, att.filename, exc,
+            )
+
+
+def _save_chunk(chunk: list, account_id, actor, label: str, chunk_num: int, provider=None) -> tuple:
     """Salva um lote de mensagens em sessão própria. Retorna (new_demands, new_messages)."""
     from app.core.database import SessionLocal as _SessionLocal
     chunk_db = _SessionLocal()
@@ -144,6 +181,7 @@ def _save_chunk(chunk: list, account_id, actor, label: str, chunk_num: int) -> t
                             mime_type=_sanitize(a.mime_type, 120),
                             size=a.size,
                             external_attachment_id=_sanitize(a.external_id, 255),
+                            # storage_path será preenchido logo após o flush abaixo
                         ))
                     if pm.received_at > demand.last_message_at:
                         demand.last_message_at = pm.received_at
@@ -153,6 +191,16 @@ def _save_chunk(chunk: list, account_id, actor, label: str, chunk_num: int) -> t
                         demand_id=demand.id,
                         user_id=actor.id if actor else None,
                         metadata={"external_message_id": pm.external_id}, commit=False,
+                    )
+                # Os Attachment agora têm id (flush foi feito dentro do begin_nested).
+                # Baixa e salva os bytes em disco enquanto ainda estamos na sessão.
+                if pm.attachments and provider is not None:
+                    _download_and_cache_attachments(
+                        provider=provider,
+                        pm=pm,
+                        msg_db_id=msg.id,
+                        account_id=account_id,
+                        db=chunk_db,
                     )
                 nm += 1
             except Exception as e:
@@ -248,7 +296,7 @@ def _sync_one_account(db: Session, provider, account_id: Optional[int], actor: O
             last=f"💾 Salvando lote {chunk_num}/{len(chunks)} ({len(downloaded)} msgs)...",
         )
 
-        nd, nm = _save_chunk(downloaded, account_id, actor, label, chunk_num)
+        nd, nm = _save_chunk(downloaded, account_id, actor, label, chunk_num, provider=provider)
         total_new_demands += nd
         total_new_messages += nm
         downloaded.clear()  # libera memória do lote

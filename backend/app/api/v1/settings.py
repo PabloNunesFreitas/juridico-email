@@ -9,7 +9,9 @@ from app.core.database import get_db
 from app.core.deps import require_admin
 from app.models.app_config import AppConfig
 from app.models.audit_log import AuditLog
+from app.models.comment import Comment
 from app.models.demand import Demand
+from app.models.demand_share import DemandShare
 from app.models.email_account import EmailAccount
 from app.models.user import User
 from app.services.audit_service import log_event
@@ -166,26 +168,79 @@ def update_account_color(account_id: int, payload: AccountColorIn, db: Session =
     return acc
 
 
+def _split_demands_by_activity(db: Session, demand_ids: list[int]):
+    """Separa demandas em dois grupos:
+    - 'safe_to_delete': sem movimentação alguma (apagar é seguro)
+    - 'keep': tiveram movimentação — serão desvinculadas, não apagadas
+
+    Uma demanda é considerada "movimentada" se qualquer uma destas condições for verdadeira:
+      - assigned_user_id IS NOT NULL  (advogado atribuído)
+      - folder_id IS NOT NULL         (movida para pasta)
+      - archived = True               (arquivada)
+      - status != 'Caixa de Entrada'  (status alterado manualmente)
+      - tem ao menos um comentário
+      - tem ao menos um compartilhamento
+    """
+    if not demand_ids:
+        return [], []
+
+    # Demandas com movimentação por campos próprios
+    moved_ids = {
+        r[0] for r in db.query(Demand.id).filter(
+            Demand.id.in_(demand_ids),
+            (
+                (Demand.assigned_user_id.isnot(None)) |
+                (Demand.folder_id.isnot(None)) |
+                (Demand.archived.is_(True)) |
+                (Demand.status != "Caixa de Entrada")
+            )
+        ).all()
+    }
+
+    # Demandas com comentários
+    commented_ids = {
+        r[0] for r in db.query(Comment.demand_id).filter(
+            Comment.demand_id.in_(demand_ids)
+        ).distinct().all()
+    }
+
+    # Demandas com compartilhamentos
+    shared_ids = {
+        r[0] for r in db.query(DemandShare.demand_id).filter(
+            DemandShare.demand_id.in_(demand_ids)
+        ).distinct().all()
+    }
+
+    keep_ids = moved_ids | commented_ids | shared_ids
+    safe_to_delete = [d for d in demand_ids if d not in keep_ids]
+    keep = [d for d in demand_ids if d in keep_ids]
+    return safe_to_delete, keep
+
+
 @router.delete("/accounts/{account_id}")
 def delete_account(account_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     acc = db.query(EmailAccount).filter(EmailAccount.id == account_id).first()
     if not acc:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
 
-    # Coleta IDs das demandas desta conta + demandas sem conta (modo legado/orphãs)
-    demand_ids_this = [
+    # Coleta IDs de todas as demandas desta conta
+    all_demand_ids = [
         r[0] for r in db.query(Demand.id).filter(Demand.email_account_id == account_id).all()
     ]
-    all_demand_ids = demand_ids_this
-    n_demands = len(all_demand_ids)
 
-    # Remove audit logs vinculados apenas às demandas desta conta
-    if all_demand_ids:
-        db.query(AuditLog).filter(AuditLog.demand_id.in_(all_demand_ids)).delete(synchronize_session=False)
+    # Separa demandas que podem ser apagadas das que têm movimentação
+    safe_to_delete, keep_ids = _split_demands_by_activity(db, all_demand_ids)
 
-    # Remove apenas as demandas desta conta (mensagens e anexos caem por CASCADE)
-    if demand_ids_this:
-        db.query(Demand).filter(Demand.email_account_id == account_id).delete(synchronize_session=False)
+    # Desvincula demandas com movimentação (preserva dados, remove apenas o vínculo com a conta)
+    if keep_ids:
+        db.query(Demand).filter(Demand.id.in_(keep_ids)).update(
+            {"email_account_id": None}, synchronize_session=False
+        )
+
+    # Remove audit logs apenas das demandas seguras para apagar
+    if safe_to_delete:
+        db.query(AuditLog).filter(AuditLog.demand_id.in_(safe_to_delete)).delete(synchronize_session=False)
+        db.query(Demand).filter(Demand.id.in_(safe_to_delete)).delete(synchronize_session=False)
 
     acc.active = False
     acc.access_token = None
@@ -194,7 +249,20 @@ def delete_account(account_id: int, db: Session = Depends(get_db), admin: User =
 
     log_event(
         db, event_type="OAUTH_DISCONNECTED",
-        description=f"{admin.name} desconectou {acc.provider} ({acc.email_address}) e apagou {n_demands} demandas",
-        user_id=admin.id, metadata={"provider": acc.provider, "email": acc.email_address, "demands_removed": n_demands},
+        description=(
+            f"{admin.name} desconectou {acc.provider} ({acc.email_address}): "
+            f"{len(safe_to_delete)} demandas apagadas, {len(keep_ids)} preservadas (com movimentação)"
+        ),
+        user_id=admin.id,
+        metadata={
+            "provider": acc.provider,
+            "email": acc.email_address,
+            "demands_removed": len(safe_to_delete),
+            "demands_preserved": len(keep_ids),
+        },
     )
-    return {"ok": True, "demands_removed": n_demands}
+    return {
+        "ok": True,
+        "demands_removed": len(safe_to_delete),
+        "demands_preserved": len(keep_ids),
+    }

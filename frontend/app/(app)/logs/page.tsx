@@ -21,6 +21,8 @@ const EVENT_LABELS: Record<string, string> = {
   COMMENT_ADDED: "Comentário adicionado",
   DEMAND_ARCHIVED: "Demanda arquivada",
   DEMAND_MOVED_TO_FOLDER: "Movida para pasta",
+  OAUTH_DISCONNECTED: "Conta desconectada",
+  NEW_EMAIL_IN_FOLDER: "Novo e-mail em pasta",
 };
 
 export default function LogsPage() {

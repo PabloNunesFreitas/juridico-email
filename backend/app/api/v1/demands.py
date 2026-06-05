@@ -17,6 +17,7 @@ from app.models.attachment import Attachment
 from app.models.notification import Notification
 from app.models.user import User, UserRole
 from app.schemas.demand import AssignIn, CoAssigneeOut, ComposeIn, CommentOut, DemandDetail, DemandOut, DemandUpdate, ReplyIn, StatusIn
+from app.services.audit_service import log_event
 
 
 class CommentIn(BaseModel):
@@ -316,6 +317,9 @@ async def reply_demand(
     )
     db.add(msg)
     demand.last_message_at = now
+    log_event(db, event_type="REPLY_SENT",
+        description=f"{user.name} respondeu a demanda #{demand_id}",
+        user_id=user.id, demand_id=demand_id, commit=False)
     db.commit()
 
     return (
@@ -343,6 +347,17 @@ def archive_demand(
     if not folder:
         raise HTTPException(status_code=404, detail="Pasta não encontrada")
     demand.folder_id = folder_id
+    log_event(db, event_type="DEMAND_MOVED_TO_FOLDER",
+        description=f'{user.name} moveu a demanda #{demand_id} para a pasta "{folder.name}"',
+        user_id=user.id, demand_id=demand_id, commit=False)
+    # Notifica o responsável se for outra pessoa
+    if demand.assigned_user_id and demand.assigned_user_id != user.id:
+        db.add(Notification(
+            user_id=demand.assigned_user_id,
+            demand_id=demand_id,
+            type="DEMAND_MOVED_TO_FOLDER",
+            message=f'Demanda movida para a pasta "{folder.name}": {(demand.subject or demand.sender_email or "")[:60]}',
+        ))
     db.commit()
     return _base_query(db).filter(Demand.id == demand_id).first()
 
@@ -378,6 +393,9 @@ def close_archive(
         raise HTTPException(status_code=403, detail="Sem permissão")
     demand.archived = True
     demand.folder_id = None
+    log_event(db, event_type="DEMAND_ARCHIVED",
+        description=f"{user.name} enviou a demanda #{demand_id} para o Arquivo Morto",
+        user_id=user.id, demand_id=demand_id, commit=False)
     db.commit()
     return _base_query(db).filter(Demand.id == demand_id).first()
 

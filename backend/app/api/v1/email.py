@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal, get_db
 from app.core.deps import get_current_user, require_admin
 from app.models.audit_log import AuditLog
+from app.models.comment import Comment
 from app.models.demand import Demand
+from app.models.demand_share import DemandShare
 from app.models.email_account import EmailAccount
 from app.models.message import Message
 from app.models.user import User
@@ -135,26 +137,69 @@ def oauth_callback(
     )
 
 
+def _split_demands_by_activity_email(db: Session, demand_ids: list[int]):
+    """Mesma lógica de _split_demands_by_activity em settings.py.
+    Separa demandas seguras para apagar das que têm movimentação e devem ser preservadas."""
+    if not demand_ids:
+        return [], []
+
+    moved_ids = {
+        r[0] for r in db.query(Demand.id).filter(
+            Demand.id.in_(demand_ids),
+            (
+                (Demand.assigned_user_id.isnot(None)) |
+                (Demand.folder_id.isnot(None)) |
+                (Demand.archived.is_(True)) |
+                (Demand.status != "Caixa de Entrada")
+            )
+        ).all()
+    }
+
+    commented_ids = {
+        r[0] for r in db.query(Comment.demand_id).filter(
+            Comment.demand_id.in_(demand_ids)
+        ).distinct().all()
+    }
+
+    shared_ids = {
+        r[0] for r in db.query(DemandShare.demand_id).filter(
+            DemandShare.demand_id.in_(demand_ids)
+        ).distinct().all()
+    }
+
+    keep_ids = moved_ids | commented_ids | shared_ids
+    safe_to_delete = [d for d in demand_ids if d not in keep_ids]
+    keep = [d for d in demand_ids if d in keep_ids]
+    return safe_to_delete, keep
+
+
 @router.post("/oauth/disconnect")
 def oauth_disconnect(provider: str = Query(...), db: Session = Depends(get_db), admin: User = Depends(require_admin)):
-    """Desconecta o provider e apaga todos os dados sincronizados (demandas,
-    mensagens, anexos, regras de atribuição, logs vinculados)."""
+    """Desconecta o provider OAuth. Demandas sem movimentação são apagadas;
+    demandas com advogado, pasta, arquivamento, status alterado, comentários ou
+    compartilhamentos são preservadas (email_account_id zerado)."""
     if provider not in ("gmail", "outlook"):
         raise HTTPException(status_code=400, detail="Provider inválido")
 
-    # Coleta apenas as contas e demandas do provider específico
     accounts = db.query(EmailAccount).filter(EmailAccount.provider == provider).all()
     account_ids = [a.id for a in accounts]
 
-    demand_ids = [
+    all_demand_ids = [
         r[0] for r in db.query(Demand.id).filter(Demand.email_account_id.in_(account_ids)).all()
     ] if account_ids else []
-    n_demands = len(demand_ids)
 
-    # Limpa logs vinculados apenas a essas demandas
-    if demand_ids:
-        db.query(AuditLog).filter(AuditLog.demand_id.in_(demand_ids)).delete(synchronize_session=False)
-        db.query(Demand).filter(Demand.email_account_id.in_(account_ids)).delete(synchronize_session=False)
+    safe_to_delete, keep_ids = _split_demands_by_activity_email(db, all_demand_ids)
+
+    # Desvincula demandas com movimentação (preserva dados, remove apenas o vínculo com a conta)
+    if keep_ids:
+        db.query(Demand).filter(Demand.id.in_(keep_ids)).update(
+            {"email_account_id": None}, synchronize_session=False
+        )
+
+    # Remove audit logs e demandas sem movimentação
+    if safe_to_delete:
+        db.query(AuditLog).filter(AuditLog.demand_id.in_(safe_to_delete)).delete(synchronize_session=False)
+        db.query(Demand).filter(Demand.id.in_(safe_to_delete)).delete(synchronize_session=False)
 
     # Marca contas do provider como inativas e remove tokens
     for acc in accounts:
@@ -165,10 +210,22 @@ def oauth_disconnect(provider: str = Query(...), db: Session = Depends(get_db), 
 
     log_event(
         db, event_type="OAUTH_DISCONNECTED",
-        description=f"{admin.name} desconectou {provider} e apagou {n_demands} demandas",
-        user_id=admin.id, metadata={"provider": provider, "demands_removed": n_demands},
+        description=(
+            f"{admin.name} desconectou {provider}: "
+            f"{len(safe_to_delete)} demandas apagadas, {len(keep_ids)} preservadas (com movimentação)"
+        ),
+        user_id=admin.id,
+        metadata={
+            "provider": provider,
+            "demands_removed": len(safe_to_delete),
+            "demands_preserved": len(keep_ids),
+        },
     )
-    return {"ok": True, "demands_removed": n_demands}
+    return {
+        "ok": True,
+        "demands_removed": len(safe_to_delete),
+        "demands_preserved": len(keep_ids),
+    }
 
 
 class ConnectedAccountOut(BaseModel):

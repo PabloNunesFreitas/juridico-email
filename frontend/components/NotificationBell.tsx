@@ -70,6 +70,9 @@ export function NotificationBell() {
     DEMAND_ASSIGNED: "Atribuição",
     DEMAND_SHARED: "Compartilhamento",
     COMMENT_ADDED: "Comentário",
+    COMMENT_MENTION: "Menção",
+    DEMAND_MOVED_TO_FOLDER: "Movida para pasta",
+    NEW_EMAIL_IN_FOLDER: "Novo e-mail em pasta",
   };
 
   return (

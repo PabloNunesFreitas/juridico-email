@@ -22,6 +22,7 @@ _COLUMN_MIGRATIONS = [
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_messages_external_id ON messages (external_message_id) WHERE external_message_id IS NOT NULL",
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_demands_thread_id ON demands (external_thread_id) WHERE external_thread_id IS NOT NULL",
     "CREATE INDEX IF NOT EXISTS ix_notifications_demand_id ON notifications (demand_id)",
+    "ALTER TABLE attachments ADD COLUMN IF NOT EXISTS storage_path VARCHAR(500)",
 ]
 
 
