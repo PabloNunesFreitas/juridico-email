@@ -1,20 +1,17 @@
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.api.v1 import api_router
 from app.core.config import settings
+from app.core.limiter import limiter
 from app.seeds import init_db
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-
-limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(title=settings.APP_NAME, version="0.1.0")
 app.state.limiter = limiter
