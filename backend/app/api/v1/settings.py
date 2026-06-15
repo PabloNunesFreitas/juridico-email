@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_admin
+from app.core.encryption import encrypt_password
 from app.models.app_config import AppConfig
 from app.models.audit_log import AuditLog
 from app.models.comment import Comment
@@ -52,6 +53,35 @@ def set_provider(payload: EmailProviderIn, db: Session = Depends(get_db), _: Use
     db.commit()
     db.refresh(acc)
     return EmailProviderOut(provider=acc.provider, email_address=acc.email_address, active=acc.active)
+
+
+@router.post("/accounts/imap", response_model=AccountOut)
+def add_imap_account(payload: IMAPAccountIn, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Adiciona uma conta IMAP/SMTP (ex: mail.acl.com.br)."""
+    # Verifica se já existe
+    existing = db.query(EmailAccount).filter(
+        EmailAccount.email_address == payload.email_address,
+        EmailAccount.provider == "imap"
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Esta conta IMAP já foi adicionada")
+
+    # Cria nova conta
+    acc = EmailAccount(
+        provider="imap",
+        email_address=payload.email_address,
+        imap_host=payload.imap_host,
+        imap_port=payload.imap_port,
+        smtp_host=payload.smtp_host,
+        smtp_port=payload.smtp_port,
+        password=encrypt_password(payload.password),
+        color=payload.color,
+        active=True,
+    )
+    db.add(acc)
+    db.commit()
+    db.refresh(acc)
+    return acc
 
 
 # ── credentials ─────────────────────────────────────────────────────────────
@@ -143,6 +173,16 @@ class AccountOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class IMAPAccountIn(BaseModel):
+    email_address: str
+    password: str
+    imap_host: str = "mail.acl.com.br"
+    imap_port: int = 993
+    smtp_host: str = "mail.acl.com.br"
+    smtp_port: int = 587
+    color: str = "#6366f1"
 
 
 class AccountColorIn(BaseModel):
