@@ -149,28 +149,6 @@ def _cfg_set(db: Session, key: str, value: str) -> None:
         db.add(AppConfig(key=key, value=value))
 
 
-class GmailCredIn(BaseModel):
-    client_id: str
-    client_secret: str
-
-
-class OutlookCredIn(BaseModel):
-    client_id: str
-    client_secret: str
-    tenant_id: Optional[str] = ""
-
-
-class GmailCredOut(BaseModel):
-    client_id: str
-    client_secret_set: bool
-
-
-class OutlookCredOut(BaseModel):
-    client_id: str
-    client_secret_set: bool
-    tenant_id: str
-
-
 @router.get("/credentials/gmail", response_model=GmailCredOut)
 def get_gmail_creds(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     client_id = _cfg_get(db, "gmail_client_id") or settings.GMAIL_CLIENT_ID or ""
@@ -212,32 +190,6 @@ def save_outlook_creds(payload: OutlookCredIn, db: Session = Depends(get_db), _:
 
 
 # ── accounts ─────────────────────────────────────────────────────────────────
-
-class AccountOut(BaseModel):
-    id: int
-    provider: str
-    email_address: str
-    color: str
-    active: bool
-    needs_reconnect: bool = False
-
-    class Config:
-        from_attributes = True
-
-
-class IMAPAccountIn(BaseModel):
-    email_address: str
-    password: str
-    imap_host: str = "mail.acl.com.br"
-    imap_port: int = 993
-    smtp_host: str = "mail.acl.com.br"
-    smtp_port: int = 587
-    color: str = "#6366f1"
-
-
-class AccountColorIn(BaseModel):
-    color: str
-
 
 @router.get("/accounts", response_model=List[AccountOut])
 def list_accounts(db: Session = Depends(get_db), _: User = Depends(require_admin)):
