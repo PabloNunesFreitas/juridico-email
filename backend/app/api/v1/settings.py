@@ -20,7 +20,7 @@ from app.services.audit_service import log_event
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
-# ── email-provider ──────────────────────────────────────────────────────────
+# ── Schemas (define all before using in endpoints) ──────────────────────────
 
 class EmailProviderIn(BaseModel):
     provider: str
@@ -32,6 +32,56 @@ class EmailProviderOut(BaseModel):
     email_address: str
     active: bool
 
+
+class AccountOut(BaseModel):
+    id: int
+    provider: str
+    email_address: str
+    color: str
+    active: bool
+    needs_reconnect: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class IMAPAccountIn(BaseModel):
+    email_address: str
+    password: str
+    imap_host: str = "mail.acl.com.br"
+    imap_port: int = 993
+    smtp_host: str = "mail.acl.com.br"
+    smtp_port: int = 587
+    color: str = "#6366f1"
+
+
+class AccountColorIn(BaseModel):
+    color: str
+
+
+class GmailCredIn(BaseModel):
+    client_id: str
+    client_secret: str
+
+
+class OutlookCredIn(BaseModel):
+    client_id: str
+    client_secret: str
+    tenant_id: Optional[str] = ""
+
+
+class GmailCredOut(BaseModel):
+    client_id: str
+    client_secret_set: bool
+
+
+class OutlookCredOut(BaseModel):
+    client_id: str
+    client_secret_set: bool
+    tenant_id: str
+
+
+# ── email-provider ──────────────────────────────────────────────────────────
 
 @router.get("/email-provider", response_model=EmailProviderOut)
 def get_provider(db: Session = Depends(get_db), _: User = Depends(require_admin)):
