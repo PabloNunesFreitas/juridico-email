@@ -5,6 +5,7 @@ Roda dentro do mesmo processo do FastAPI. Para PoC isso basta; em produção
 recomenda-se Celery/Redis ou um worker separado.
 """
 import logging
+import traceback
 from typing import Optional
 
 import httpx
@@ -25,7 +26,7 @@ def _job() -> None:
         if result.get("new_messages", 0) > 0:
             log.info("[auto-sync] %s", result)
     except Exception as e:
-        log.warning("[auto-sync] falhou: %s", e)
+        log.error("[auto-sync] falhou: %s\n%s", str(e), traceback.format_exc())
     finally:
         db.close()
 
