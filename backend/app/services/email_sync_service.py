@@ -103,7 +103,7 @@ def _get_accounts_to_sync(db: Session):
     return [(get_provider_for_account(acc), acc.id) for acc in active]
 
 
-PARALLEL = 10       # workers paralelos de download
+PARALLEL = 2        # workers paralelos de download (reduzido para não sobrecarregar servidor IMAP)
 CHUNK_SIZE = 60     # salva no banco a cada N mensagens baixadas (60 emails/hora para respeitar limite do provedor)
 
 
