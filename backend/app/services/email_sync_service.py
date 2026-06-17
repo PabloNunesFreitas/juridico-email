@@ -253,6 +253,7 @@ def _sync_one_account(db: Session, provider, account_id: Optional[int], actor: O
 
     def _fetch_one(ext_id: str, _prov=provider):
         try:
+            time.sleep(1)  # Delay 1s entre fetches para evitar corrupção IMAP
             return ext_id, _prov.get_message_by_id(ext_id), None
         except Exception as e:
             return ext_id, None, str(e)
