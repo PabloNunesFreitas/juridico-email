@@ -18,3 +18,6 @@ a0218c64f424f3cbb35d1a1a08923ae868c0d95b 3fcf4839b6391e97298125483568a31b016b6d8
 3fcf4839b6391e97298125483568a31b016b6d8f 38657c10633c2193054c767e5f593e197cbcb254 PabloNunesFreitas <lordycraft12@gmail.com> 1779498391 -0300	reset: moving to HEAD~2
 38657c10633c2193054c767e5f593e197cbcb254 4e325ecc068bc6b321ce78aa9dc34da2b3aa162a PabloNunesFreitas <lordycraft12@gmail.com> 1779498410 -0300	commit: feat: co-responsáveis, responder-para editável, compor e-mail e trabalhar junto
 4e325ecc068bc6b321ce78aa9dc34da2b3aa162a 05d2e3b1c20afc9740dec9d9e73925a28988c4ea PabloNunesFreitas <lordycraft12@gmail.com> 1781692198 -0300	reset: moving to origin/main
+05d2e3b1c20afc9740dec9d9e73925a28988c4ea 054d78399b9f21b2d90ad053559bbe9cad972a24 PabloNunesFreitas <lordycraft12@gmail.com> 1781692209 -0300	commit: feat: IMAP+SMTP email integration complete with database sync
+054d78399b9f21b2d90ad053559bbe9cad972a24 5c580e81a9ebfb2f85f7e02454893c78e5ffc269 PabloNunesFreitas <lordycraft12@gmail.com> 1781692256 -0300	commit: feat: Add sync configuration endpoints
+5c580e81a9ebfb2f85f7e02454893c78e5ffc269 4885fd41225a31ffb7f9451ea957708d61f05fd9 PabloNunesFreitas <lordycraft12@gmail.com> 1781692486 -0300	commit: feat: Email sending via IMAP/Gmail/Outlook

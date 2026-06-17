@@ -1,12 +1,31 @@
-feat: co-responsáveis, responder-para editável, compor e-mail e trabalhar junto
+feat: Email sending via IMAP/Gmail/Outlook
 
-- Múltiplos co-responsáveis por demanda via demand_shares.is_co_assignee
-- Banner 'Trabalhar junto' na aba Compartilhadas usa /join (co-assign, não takeover)
-- Campo 'Responder para' vira tag-input editável com adição e remoção de destinatários
-- Modal 'Novo E-mail' com campos Para, CC, Assunto e Corpo via endpoint /compose
-- Endpoints backend: /co-assign, DELETE /co-assign/{id}, /join, /compose
-- Suporte a CC e to_emails nos providers Gmail, Outlook e Mock
-- Migração automática da coluna is_co_assignee em demand_shares
-- Seção co-responsáveis no painel lateral com add/remove inline
+New endpoint: POST /email/send
+- Envia emails/respostas via conta configurada
+- Suporta IMAP, Gmail (OAuth) e Outlook (OAuth)
+- Registra em audit_log
+- Valida conta e permissões
 
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+Request:
+{
+  "to": "destinatario@example.com",
+  "subject": "Assunto",
+  "body": "Corpo da mensagem",
+  "account_id": 1,
+  "cc": ["cc@example.com"]
+}
+
+Response:
+{
+  "message_id": "...",
+  "to": "...",
+  "subject": "...",
+  "sent_at": "2026-06-17T..."
+}
+
+Frontend pode agora:
+✅ Listar emails recebidos (GET /api/v1/demands)
+✅ Ver detalhes de email (GET /api/v1/messages/{id})
+✅ Enviar resposta (POST /email/send)
+
+Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>
