@@ -104,7 +104,7 @@ def _get_accounts_to_sync(db: Session):
 
 
 PARALLEL = 10       # workers paralelos de download
-CHUNK_SIZE = 200    # salva no banco a cada N mensagens baixadas (mantém RAM limitada)
+CHUNK_SIZE = 60     # salva no banco a cada N mensagens baixadas (60 emails/hora para respeitar limite do provedor)
 
 
 def _download_and_cache_attachments(provider, pm, msg_db_id: int, account_id: Optional[int], db) -> None:
@@ -318,7 +318,7 @@ def _sync_one_account(db: Session, provider, account_id: Optional[int], actor: O
     return len(all_ids), total_new_demands, total_new_messages
 
 
-def sync_inbox(db: Session, actor: Optional[User] = None, since: Optional[datetime] = None, limit: int = 100000) -> dict:
+def sync_inbox(db: Session, actor: Optional[User] = None, since: Optional[datetime] = None, limit: int = 60) -> dict:
     if not SYNC_STATE.try_start():
         log.info("[sync] já em execução, pulando")
         return {"new_demands": 0, "new_messages": 0, "scanned": 0, "skipped": True}
