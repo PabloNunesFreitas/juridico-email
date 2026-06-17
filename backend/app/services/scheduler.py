@@ -14,6 +14,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.services.email_sync_service import sync_inbox
+from app.services.imap_idle_service import start_imap_idle, stop_imap_idle
 
 log = logging.getLogger(__name__)
 _scheduler: Optional[BackgroundScheduler] = None
@@ -71,11 +72,18 @@ def start_scheduler() -> None:
         )
         log.info("[scheduler] keep-alive ativado → %s", settings.SELF_PING_URL)
     _scheduler.start()
+    log.info("[scheduler] iniciando IMAP IDLE...")
+    try:
+        start_imap_idle()
+        log.info("[scheduler] IMAP IDLE iniciado")
+    except Exception as e:
+        log.error("[scheduler] erro ao iniciar IMAP IDLE: %s", e)
     log.info("[scheduler] auto-sync iniciada (intervalo=%ss)", settings.AUTO_SYNC_INTERVAL_SECONDS)
 
 
 def stop_scheduler() -> None:
     global _scheduler
+    stop_imap_idle()
     if _scheduler:
         _scheduler.shutdown(wait=False)
         _scheduler = None
