@@ -19,8 +19,28 @@ from app.services import oauth_service
 from app.services.audit_service import log_event
 from app.services.email_sync_service import sync_inbox
 from app.services.sync_state import SYNC_STATE
+from app.providers import get_provider_for_account
 
 router = APIRouter(prefix="/email", tags=["email"])
+
+
+# ── Schemas para envio de emails ────────────────────────────────────────────
+
+class SendEmailIn(BaseModel):
+    """Schema para enviar email/resposta"""
+    to: str
+    subject: str
+    body: str
+    account_id: int
+    cc: Optional[List[str]] = None
+
+
+class SendEmailOut(BaseModel):
+    """Resposta de email enviado"""
+    message_id: str
+    to: str
+    subject: str
+    sent_at: str
 
 
 @router.post("/sync")
@@ -242,3 +262,48 @@ def oauth_status(provider: str, db: Session = Depends(get_db), _: User = Depends
         acc = db.query(EmailAccount).filter(EmailAccount.provider == provider, EmailAccount.active.is_(True)).order_by(EmailAccount.id.desc()).first()
         return ConnectedAccountOut(provider=provider, email_address=acc.email_address if acc else "", connected=True)
     return ConnectedAccountOut(provider=provider, email_address="", connected=False)
+
+
+# ── Envio de emails ────────────────────────────────────────────────────────
+
+@router.post("/send", response_model=SendEmailOut)
+def send_email(payload: SendEmailIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Envia um email via conta configurada (IMAP, Gmail ou Outlook)."""
+    try:
+        acc = db.query(EmailAccount).filter(EmailAccount.id == payload.account_id, EmailAccount.active.is_(True)).first()
+        if not acc:
+            raise HTTPException(status_code=404, detail="Conta de email não encontrada")
+
+        provider = get_provider_for_account(acc)
+
+        # Envia via provider (IMAP, Gmail ou Outlook)
+        message_id = provider.send_reply(
+            to=payload.to,
+            from_addr=acc.email_address,
+            subject=payload.subject,
+            body_text=payload.body,
+            cc=payload.cc,
+        )
+
+        # Registra no audit log
+        log_event(
+            db, event_type="EMAIL_SENT",
+            description=f"E-mail enviado para {payload.to}",
+            user_id=user.id,
+            metadata={
+                "to": payload.to,
+                "subject": payload.subject,
+                "account_id": payload.account_id,
+                "message_id": message_id,
+            },
+        )
+
+        from datetime import datetime, timezone
+        return SendEmailOut(
+            message_id=message_id,
+            to=payload.to,
+            subject=payload.subject,
+            sent_at=datetime.now(timezone.utc).isoformat(),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Falha ao enviar e-mail: {str(e)}")
