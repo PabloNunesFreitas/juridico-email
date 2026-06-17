@@ -59,6 +59,26 @@ class AccountColorIn(BaseModel):
     color: str
 
 
+class SyncConfigIn(BaseModel):
+    """Configurações de sincronização de e-mails"""
+    save_body_text: bool = True
+    save_body_html: bool = True
+    download_attachments: bool = True
+    emails_per_hour: int = 60
+    sync_interval_seconds: int = 600
+
+
+class SyncConfigOut(BaseModel):
+    save_body_text: bool
+    save_body_html: bool
+    download_attachments: bool
+    emails_per_hour: int
+    sync_interval_seconds: int
+
+    class Config:
+        from_attributes = True
+
+
 class GmailCredIn(BaseModel):
     client_id: str
     client_secret: str
@@ -308,3 +328,41 @@ def delete_account(account_id: int, db: Session = Depends(get_db), admin: User =
         "demands_removed": len(safe_to_delete),
         "demands_preserved": len(keep_ids),
     }
+
+
+# ── sync configuration ──────────────────────────────────────────────────────
+
+@router.get("/sync-config", response_model=SyncConfigOut)
+def get_sync_config(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """Retorna configurações de sincronização de e-mails."""
+    cfg = {
+        "save_body_text": _cfg_get(db, "sync_save_body_text") != "false",
+        "save_body_html": _cfg_get(db, "sync_save_body_html") != "false",
+        "download_attachments": _cfg_get(db, "sync_download_attachments") != "false",
+        "emails_per_hour": int(_cfg_get(db, "sync_emails_per_hour") or "60"),
+        "sync_interval_seconds": int(_cfg_get(db, "sync_interval_seconds") or "600"),
+    }
+    return cfg
+
+
+@router.post("/sync-config", response_model=SyncConfigOut)
+def update_sync_config(payload: SyncConfigIn, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """Atualiza configurações de sincronização."""
+    _cfg_set(db, "sync_save_body_text", "true" if payload.save_body_text else "false")
+    _cfg_set(db, "sync_save_body_html", "true" if payload.save_body_html else "false")
+    _cfg_set(db, "sync_download_attachments", "true" if payload.download_attachments else "false")
+    _cfg_set(db, "sync_emails_per_hour", str(payload.emails_per_hour))
+    _cfg_set(db, "sync_interval_seconds", str(payload.sync_interval_seconds))
+    db.commit()
+
+    log_event(
+        db, event_type="CONFIG_UPDATED",
+        description=f"Configurações de sync atualizadas: {payload.emails_per_hour}/h, intervalo {payload.sync_interval_seconds}s",
+        user_id=admin.id,
+        metadata={
+            "save_text": payload.save_body_text,
+            "save_html": payload.save_body_html,
+            "download_attachments": payload.download_attachments,
+        },
+    )
+    return payload
