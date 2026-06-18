@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     SELF_PING_URL: str = ""
 
     # Limite de dias para o primeiro sync (0 = sem limite)
-    SYNC_INITIAL_DAYS: int = 180
+    SYNC_INITIAL_DAYS: int = 0
 
     class Config:
         env_file = ".env"
