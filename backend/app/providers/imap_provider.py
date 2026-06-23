@@ -346,7 +346,9 @@ class IMAPEmailProvider(EmailProvider):
             msg["To"] = to
             if cc:
                 msg["Cc"] = ", ".join(cc)
-            msg["Subject"] = subject if subject.lower().startswith("re:") else f"Re: {subject}"
+            # Envia o assunto exatamente como recebido. Quem responde já manda
+            # o "Re:" no assunto; e-mail novo (compose) vai sem prefixo.
+            msg["Subject"] = subject
 
             msg.attach(MIMEText(body_text, "plain"))
 

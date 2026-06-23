@@ -293,6 +293,8 @@ async def reply_demand(
     provider = get_provider_for_account(demand.email_account)
     from_addr = demand.email_account.email_address
     subject = demand.subject or ""
+    # Resposta: garante o prefixo "Re:" (compose envia sem prefixo)
+    reply_subject = subject if subject.lower().startswith("re:") else f"Re: {subject}"
 
     primary_to = (payload.to_emails or [demand.sender_email])
     if not primary_to:
@@ -307,7 +309,7 @@ async def reply_demand(
         ext_id = provider.send_reply(
             to=primary_to[0],
             from_addr=from_addr,
-            subject=subject,
+            subject=reply_subject,
             body_text=payload.body_text,
             thread_id=demand.external_thread_id or None,
             cc=(primary_to[1:] + (payload.cc or [])) or None,
@@ -317,7 +319,6 @@ async def reply_demand(
         raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {e}")
 
     now = datetime.utcnow()
-    reply_subject = subject if subject.lower().startswith("re:") else f"Re: {subject}"
     all_recipients = (payload.to_emails or [demand.sender_email]) + (payload.cc or [])
     msg = Message(
         demand_id=demand.id,
