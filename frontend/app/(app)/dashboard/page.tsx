@@ -1,21 +1,17 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, Demand } from "@/lib/api";
+import { api } from "@/lib/api";
+
+type Stats = { total: number; unassigned: number; by_status: Record<string, number> };
 
 export default function DashboardPage() {
-  const [demands, setDemands] = useState<Demand[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   async function load() {
-    try {
-      const d = await api.listDemands();
-      setDemands(d);
-    } catch {
-      // usuários comuns: só veem suas próprias
-      const d = await api.myDemands();
-      setDemands(d);
-    }
+    const s = await api.demandStats();
+    setStats(s);
   }
 
   useEffect(() => { load(); }, []);
@@ -34,9 +30,9 @@ export default function DashboardPage() {
     }
   }
 
-  const byStatus: Record<string, number> = {};
-  const unassigned = demands.filter((d) => !d.assigned_user).length;
-  for (const d of demands) byStatus[d.status] = (byStatus[d.status] || 0) + 1;
+  const byStatus: Record<string, number> = stats?.by_status ?? {};
+  const unassigned = stats?.unassigned ?? 0;
+  const total = stats?.total ?? 0;
 
   return (
     <div>
@@ -46,7 +42,7 @@ export default function DashboardPage() {
       </div>
       {msg && <div className="card p-3 mb-4 text-sm">{msg}</div>}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Stat label="Total de demandas" value={demands.length} />
+        <Stat label="Total de demandas" value={total} />
         <Stat label="Não atribuídas" value={unassigned} />
         <Stat label="Em follow up" value={byStatus["Follow up"] || 0} />
         <Stat label="Acordos realizados" value={byStatus["Acordos realizados"] || 0} />

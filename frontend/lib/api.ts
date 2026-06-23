@@ -166,6 +166,7 @@ export const api = {
     ).toString();
     return request<Demand[]>(`/api/v1/demands/my${qs ? "?" + qs : ""}`);
   },
+  demandStats: () => request<{ total: number; unassigned: number; by_status: Record<string, number> }>(`/api/v1/demands/stats`),
   sharedDemands: () => request<Demand[]>("/api/v1/demands/shared"),
   shareDemand: (id: number, user_id: number, note?: string) =>
     request<{ ok: boolean }>(`/api/v1/demands/${id}/share`, { method: "POST", body: JSON.stringify({ user_id, note }) }),

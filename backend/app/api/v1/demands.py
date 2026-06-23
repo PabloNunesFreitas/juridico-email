@@ -4,6 +4,7 @@ from typing import List, Optional
 import json
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
@@ -74,6 +75,22 @@ def list_demands(
     if q:
         query = _apply_search(query, q)
     return query.order_by(Demand.last_message_at.desc()).limit(2000).all()
+
+
+@router.get("/stats")
+def demands_stats(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Contagens reais (COUNT) para o dashboard — sem o limite de 2000 da listagem."""
+    base = db.query(Demand).filter(Demand.archived == False)  # noqa: E712
+    if user.role != UserRole.ADMIN:
+        base = base.filter(Demand.assigned_user_id == user.id)
+    total = base.count()
+    unassigned = base.filter(Demand.assigned_user_id.is_(None)).count()
+
+    sq = db.query(Demand.status, func.count(Demand.id)).filter(Demand.archived == False)  # noqa: E712
+    if user.role != UserRole.ADMIN:
+        sq = sq.filter(Demand.assigned_user_id == user.id)
+    by_status = {(s.value if hasattr(s, "value") else str(s)): c for s, c in sq.group_by(Demand.status).all()}
+    return {"total": total, "unassigned": unassigned, "by_status": by_status}
 
 
 def _apply_search(query, q: str):
