@@ -69,7 +69,9 @@ def _find_or_create_demand(db: Session, msg: ProviderMessage) -> Tuple[Demand, b
         client_name=_trunc(parsed.get("client_name"), 180),
         nup=_trunc(parsed.get("nup"), 60),
         bank=parsed.get("bank"),
-        status=parsed.get("status") or DemandStatus.CAIXA_ENTRADA,
+        # Status NÃO é mais classificado pelo assunto — a equipe define manualmente
+        # no sistema. Toda demanda nova entra como "Caixa de Entrada".
+        status=DemandStatus.CAIXA_ENTRADA,
         last_message_at=msg.received_at,
         email_account_id=None,
     )
@@ -104,7 +106,7 @@ def _get_accounts_to_sync(db: Session):
 
 
 PARALLEL = 1        # 1 worker = 1 requisição por vez (60 por hora, respeitando limite do provedor)
-CHUNK_SIZE = 60     # salva no banco a cada N mensagens baixadas
+CHUNK_SIZE = 1000  # Processa 1000 emails por lote     # salva no banco a cada N mensagens baixadas
 
 
 def _download_and_cache_attachments(provider, pm, msg_db_id: int, account_id: Optional[int], db) -> None:
