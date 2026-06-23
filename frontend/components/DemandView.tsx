@@ -931,6 +931,9 @@ export function DemandView({ source, title, folderId }: Props) {
                       </span>
                       <span>{new Date(m.received_at).toLocaleString()}</span>
                     </div>
+                    {m.recipient_emails && (
+                      <div className="text-xs text-gray-500 mt-0.5">Para: {m.recipient_emails}</div>
+                    )}
                     <div className="text-sm font-medium mt-1">{m.subject}</div>
                     <pre className="text-sm whitespace-pre-wrap mt-2 text-gray-800 font-sans">{m.body_text || ""}</pre>
                     {m.attachments && m.attachments.length > 0 && (

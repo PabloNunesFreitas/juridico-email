@@ -55,6 +55,7 @@ export interface Message {
   direction: string;
   sender_email: string;
   sender_name: string | null;
+  recipient_emails: string | null;
   subject: string | null;
   body_text: string | null;
   body_html: string | null;
