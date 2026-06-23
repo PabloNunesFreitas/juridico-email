@@ -13,6 +13,7 @@ export interface EmailAccount {
   color: string;
   active: boolean;
   needs_reconnect: boolean;
+  protected?: boolean;
 }
 
 export interface Folder {

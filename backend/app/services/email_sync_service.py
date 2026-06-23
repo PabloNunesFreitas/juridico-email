@@ -183,7 +183,11 @@ def _save_chunk(chunk: list, account_id, actor, label: str, chunk_num: int, prov
                             external_attachment_id=_sanitize(a.external_id, 255),
                             # storage_path será preenchido logo após o flush abaixo
                         ))
-                    if pm.received_at > demand.last_message_at:
+                    last_at = demand.last_message_at
+                    if last_at and last_at.tzinfo is None:
+                        from datetime import timezone as _tz
+                        last_at = last_at.replace(tzinfo=_tz.utc)
+                    if last_at is None or pm.received_at > last_at:
                         demand.last_message_at = pm.received_at
                     log_event(
                         chunk_db, event_type="MESSAGE_RECEIVED",

@@ -40,9 +40,23 @@ class AccountOut(BaseModel):
     color: str
     active: bool
     needs_reconnect: bool = False
+    protected: bool = False  # conta que não pode ser removida
 
     class Config:
         from_attributes = True
+
+    @staticmethod
+    def from_account(acc) -> "AccountOut":
+        from app.core.config import settings as _s
+        return AccountOut(
+            id=acc.id,
+            provider=acc.provider,
+            email_address=acc.email_address,
+            color=acc.color,
+            active=acc.active,
+            needs_reconnect=acc.needs_reconnect,
+            protected=acc.email_address.lower() in _s.protected_emails,
+        )
 
 
 class IMAPAccountIn(BaseModel):
@@ -151,7 +165,7 @@ def add_imap_account(payload: IMAPAccountIn, db: Session = Depends(get_db), _: U
     db.add(acc)
     db.commit()
     db.refresh(acc)
-    return acc
+    return AccountOut.from_account(acc)
 
 
 # ── credentials ─────────────────────────────────────────────────────────────
@@ -213,7 +227,8 @@ def save_outlook_creds(payload: OutlookCredIn, db: Session = Depends(get_db), _:
 
 @router.get("/accounts", response_model=List[AccountOut])
 def list_accounts(db: Session = Depends(get_db), _: User = Depends(require_admin)):
-    return db.query(EmailAccount).filter(EmailAccount.active.is_(True)).order_by(EmailAccount.id).all()
+    accs = db.query(EmailAccount).filter(EmailAccount.active.is_(True)).order_by(EmailAccount.id).all()
+    return [AccountOut.from_account(a) for a in accs]
 
 
 @router.patch("/accounts/{account_id}/color", response_model=AccountOut)
@@ -227,7 +242,7 @@ def update_account_color(account_id: int, payload: AccountColorIn, db: Session =
     acc.color = color
     db.commit()
     db.refresh(acc)
-    return acc
+    return AccountOut.from_account(acc)
 
 
 def _split_demands_by_activity(db: Session, demand_ids: list[int]):
@@ -284,6 +299,11 @@ def delete_account(account_id: int, db: Session = Depends(get_db), admin: User =
     acc = db.query(EmailAccount).filter(EmailAccount.id == account_id).first()
     if not acc:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
+
+    # Conta protegida não pode ser removida (garante "não tem possibilidade de excluir")
+    from app.core.config import settings as _s
+    if acc.email_address.lower() in _s.protected_emails:
+        raise HTTPException(status_code=403, detail="Esta conta é protegida e não pode ser removida.")
 
     # Coleta IDs de todas as demandas desta conta
     all_demand_ids = [

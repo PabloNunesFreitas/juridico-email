@@ -15,7 +15,9 @@ services:
       retries: 10
 
   backend:
-    image: ghcr.io/${GITHUB_REPO}/backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
       db:
@@ -37,8 +39,13 @@ services:
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      ATTACHMENT_ROOT: /opt/juridico-email/attachments
+      PROTECTED_ACCOUNT_EMAILS: poupanca@andradealves.adv.br
+    volumes:
+      - attachments:/opt/juridico-email/attachments
     ports:
       - "8000:8000"
 
 volumes:
   pgdata:
+  attachments:

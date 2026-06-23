@@ -406,13 +406,22 @@ export default function SettingsPage() {
                     </div>
                   )}
                 </div>
-                <button
-                  className="btn-danger text-xs py-1 px-2"
-                  onClick={() => removeAccount(acc)}
-                  disabled={busy}
-                >
-                  Remover
-                </button>
+                {acc.protected ? (
+                  <span
+                    className="text-xs text-gray-400 py-1 px-2 flex items-center gap-1 whitespace-nowrap"
+                    title="Conta protegida — não pode ser removida"
+                  >
+                    🔒 Protegida
+                  </span>
+                ) : (
+                  <button
+                    className="btn-danger text-xs py-1 px-2"
+                    onClick={() => removeAccount(acc)}
+                    disabled={busy}
+                  >
+                    Remover
+                  </button>
+                )}
               </div>
             ))}
           </div>

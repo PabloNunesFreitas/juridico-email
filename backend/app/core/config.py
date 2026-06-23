@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     # Limite de dias para o primeiro sync (0 = sem limite)
     SYNC_INITIAL_DAYS: int = 0
 
+    # Contas protegidas (não podem ser removidas pela UI/API). Lista por vírgula.
+    PROTECTED_ACCOUNT_EMAILS: str = "contato@andradealves.adv.br"
+
+    @property
+    def protected_emails(self) -> set[str]:
+        return {e.strip().lower() for e in self.PROTECTED_ACCOUNT_EMAILS.split(",") if e.strip()}
+
     class Config:
         env_file = ".env"
         case_sensitive = True
