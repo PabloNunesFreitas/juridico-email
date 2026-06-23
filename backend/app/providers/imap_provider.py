@@ -253,12 +253,14 @@ class IMAPEmailProvider(EmailProvider):
             sender_name = sender_email.split("<")[0].strip().strip('"') or None
             sender_email = sender_email.split("<")[1].rstrip(">")
 
-        recipients = []
-        for hdr in ["To", "Cc"]:
-            val = email_msg.get(hdr, "")
-            if val:
-                # Simples parse — split por vírgula
-                recipients.extend([e.strip().split("<")[-1].rstrip(">") if "<" in e else e.strip() for e in val.split(",")])
+        def _parse_addrs(raw: str) -> list:
+            if not raw:
+                return []
+            raw = _decode_mime_header(raw) or ""
+            return [e.strip().split("<")[-1].rstrip(">") if "<" in e else e.strip() for e in raw.split(",") if e.strip()]
+
+        recipients = _parse_addrs(email_msg.get("To", ""))
+        cc = _parse_addrs(email_msg.get("Cc", ""))
 
         subject = _decode_mime_header(email_msg.get("Subject", "(sem assunto)"))
         body_text = None
@@ -318,7 +320,8 @@ class IMAPEmailProvider(EmailProvider):
             thread_id=external_id,  # IMAP não tem threads — usamos o ID da mensagem
             sender_email=sender_email,
             sender_name=sender_name,
-            recipients=list(set(recipients)),  # Remove duplicatas
+            recipients=list(dict.fromkeys(recipients)),  # remove duplicatas, mantém ordem
+            cc=list(dict.fromkeys(cc)),
             subject=subject,
             body_text=body_text,
             body_html=body_html,

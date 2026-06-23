@@ -15,7 +15,8 @@ class Message(Base):
     direction = Column(String(10), nullable=False, default="in")  # in | out
     sender_email = Column(String(180), nullable=False)
     sender_name = Column(String(180), nullable=True)
-    recipient_emails = Column(Text, nullable=True)  # csv
+    recipient_emails = Column(Text, nullable=True)  # csv (To)
+    cc_emails = Column(Text, nullable=True)  # csv (Cc)
     subject = Column(String(500), nullable=True)
     body_text = Column(Text, nullable=True)
     body_html = Column(Text, nullable=True)

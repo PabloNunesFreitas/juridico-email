@@ -52,6 +52,7 @@ class MessageOut(BaseModel):
     sender_email: str
     sender_name: Optional[str] = None
     recipient_emails: Optional[str] = None
+    cc_emails: Optional[str] = None
     subject: Optional[str] = None
     body_text: Optional[str] = None
     body_html: Optional[str] = None

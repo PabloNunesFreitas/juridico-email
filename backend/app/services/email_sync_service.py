@@ -168,6 +168,7 @@ def _save_chunk(chunk: list, account_id, actor, label: str, chunk_num: int, prov
                         sender_email=_sanitize(pm.sender_email, 180),
                         sender_name=_sanitize(pm.sender_name, 180),
                         recipient_emails=_sanitize(",".join(pm.recipients)),
+                        cc_emails=_sanitize(",".join(getattr(pm, "cc", []) or [])),
                         subject=_sanitize(pm.subject, 500),
                         body_text=_sanitize(pm.body_text),
                         body_html=_sanitize(pm.body_html),

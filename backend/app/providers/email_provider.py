@@ -24,6 +24,7 @@ class ProviderMessage:
     body_html: Optional[str]
     received_at: datetime
     attachments: List[ProviderAttachment] = field(default_factory=list)
+    cc: List[str] = field(default_factory=list)  # destinatários em cópia (CC)
 
 
 class EmailProvider(ABC):
