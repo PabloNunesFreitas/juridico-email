@@ -144,10 +144,23 @@ export default function ArchivePage() {
                     {m.attachments?.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
                         {m.attachments.map(att => (
-                          <a key={att.id} href={api.downloadAttachment(m.id, att.id)} target="_blank" rel="noopener noreferrer"
+                          <button key={att.id} type="button"
+                            onClick={async () => {
+                              try {
+                                const blob = await api.fetchAttachmentBlob(m.id, att.id);
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                const viewable = /\.(pdf|png|jpe?g|gif|webp|bmp|svg)$/i.test(att.filename || "");
+                                if (viewable) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
+                                else { a.download = att.filename || "anexo"; }
+                                document.body.appendChild(a); a.click(); a.remove();
+                                setTimeout(() => URL.revokeObjectURL(url), 60000);
+                              } catch { alert("Não foi possível abrir o anexo."); }
+                            }}
                             className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-0.5 rounded">
                             📎 {att.filename}
-                          </a>
+                          </button>
                         ))}
                       </div>
                     )}

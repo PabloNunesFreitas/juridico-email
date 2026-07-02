@@ -236,6 +236,16 @@ export const api = {
   downloadAttachment: (messageId: number, attId: number) =>
     `${API_URL}/api/v1/messages/${messageId}/attachments/${attId}/download`,
 
+  // Busca o anexo COM o token (link <a> não envia Authorization) e devolve um blob.
+  fetchAttachmentBlob: async (messageId: number, attId: number): Promise<Blob> => {
+    const t = token();
+    const res = await fetch(`${API_URL}/api/v1/messages/${messageId}/attachments/${attId}/download`, {
+      headers: t ? { Authorization: `Bearer ${t}` } : {},
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.blob();
+  },
+
   joinDemand: (id: number) =>
     request<Demand>(`/api/v1/demands/${id}/join`, { method: "POST" }),
   coAssign: (demandId: number, user_id: number) =>

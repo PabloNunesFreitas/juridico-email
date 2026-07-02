@@ -942,16 +942,31 @@ export function DemandView({ source, title, folderId }: Props) {
                     {m.attachments && m.attachments.length > 0 && (
                       <div className="mt-2 space-y-1">
                         {m.attachments.map(att => (
-                          <a
+                          <button
                             key={att.id}
-                            href={api.downloadAttachment(m.id, att.id)}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const blob = await api.fetchAttachmentBlob(m.id, att.id);
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                const viewable = /\.(pdf|png|jpe?g|gif|webp|bmp|svg)$/i.test(att.filename || "");
+                                if (viewable) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
+                                else { a.download = att.filename || "anexo"; }
+                                document.body.appendChild(a);
+                                a.click();
+                                a.remove();
+                                setTimeout(() => URL.revokeObjectURL(url), 60000);
+                              } catch {
+                                toast("Não foi possível abrir o anexo.", "error");
+                              }
+                            }}
                             className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded mr-1"
                           >
                             📎 {att.filename}
                             {att.size ? <span className="text-gray-400">({Math.round(att.size / 1024)}KB)</span> : null}
-                          </a>
+                          </button>
                         ))}
                       </div>
                     )}
