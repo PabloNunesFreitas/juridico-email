@@ -259,8 +259,9 @@ export function DemandView({ source, title, folderId }: Props) {
     const atIdx = value.lastIndexOf("@");
     if (atIdx !== -1) {
       const after = value.slice(atIdx + 1);
-      const hasMatch = users.some(u => u.id !== me?.id && u.name.toLowerCase().startsWith(after.toLowerCase()));
-      if (hasMatch || after.length === 0) {
+      // Enquanto está digitando a menção (sem espaço/quebra depois do @),
+      // abre a lista. Vazio ("@") mostra TODOS os usuários.
+      if (!after.includes(" ") && !after.includes("\n")) {
         setMentionQuery(after.toLowerCase());
         setMentionIndex(0);
         return;
@@ -271,7 +272,9 @@ export function DemandView({ source, title, folderId }: Props) {
 
   function mentionSuggestions() {
     if (mentionQuery === null) return [];
-    return users.filter(u => u.id !== me?.id && u.name.toLowerCase().startsWith(mentionQuery));
+    const q = mentionQuery;
+    // "@" sozinho -> todos; digitando -> filtra por qualquer parte do nome
+    return users.filter(u => u.id !== me?.id && (q === "" || u.name.toLowerCase().includes(q)));
   }
 
   function renderMentions(content: string) {
@@ -976,7 +979,10 @@ export function DemandView({ source, title, folderId }: Props) {
 
               {/* Conversa interna */}
               <div className="mt-6 border-t pt-4">
-                <div className="text-xs text-gray-500 uppercase font-medium mb-2">Conversa Interna</div>
+                <div className="text-xs text-gray-500 uppercase font-medium mb-1">Conversa Interna</div>
+                <p className="text-xs text-gray-400 mb-2">
+                  💬 Anotações entre a equipe sobre este caso (o cliente NÃO vê). Digite <b>@</b> para mencionar um colega — ele recebe uma notificação.
+                </p>
                 <div className="space-y-2 max-h-52 overflow-y-auto mb-3">
                   {comments.length === 0 && (
                     <p className="text-xs text-gray-400">Nenhum comentário ainda.</p>

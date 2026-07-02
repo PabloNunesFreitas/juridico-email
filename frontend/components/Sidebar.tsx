@@ -151,11 +151,14 @@ export function Sidebar({ user, isOpen, onClose }: { user: User | null; isOpen?:
         {/* Seção de pastas */}
         <div className="pt-2">
           <div className="flex items-center justify-between px-3 py-1">
-            <span className="text-xs text-gray-400 uppercase tracking-wider font-medium">Pastas</span>
+            <span
+              className="text-xs text-gray-400 uppercase tracking-wider font-medium cursor-help"
+              title="Pastas são suas 'gavetas' para organizar os casos. Crie pastas (ex.: 'Bradesco', 'Urgente') e mova demandas para elas. É organização pessoal — não envia nem apaga e-mail."
+            >Pastas ⓘ</span>
             <button
               onClick={() => { setCreatingFolder(true); setNewFolderName(""); }}
               className="text-gray-400 hover:text-white text-xl leading-none w-5 h-5 flex items-center justify-center rounded transition-colors"
-              title="Nova pasta"
+              title="Criar nova pasta para organizar casos"
             >+</button>
           </div>
 
@@ -178,7 +181,7 @@ export function Sidebar({ user, isOpen, onClose }: { user: User | null; isOpen?:
           )}
 
           {folders.length === 0 && !creatingFolder && (
-            <p className="px-3 py-1 text-xs text-gray-500 italic">Nenhuma pasta. Clique em + para criar.</p>
+            <p className="px-3 py-1 text-xs text-gray-500 italic">Organize casos em pastas (ex.: por banco). Clique em + para criar.</p>
           )}
 
           {folders.map(folder => (
