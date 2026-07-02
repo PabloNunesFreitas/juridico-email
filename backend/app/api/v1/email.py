@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
@@ -13,7 +14,7 @@ from app.models.demand import Demand
 from app.models.demand_share import DemandShare
 from app.models.email_account import EmailAccount
 from app.models.message import Message
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.demand import MessageOut
 from app.services import oauth_service
 from app.services.audit_service import log_event
@@ -81,6 +82,38 @@ def contacts(db: Session = Depends(get_db), _: User = Depends(get_current_user))
             for m in _EMAIL_RE.findall(blob or ""):
                 emails.add(m.lower())
     return sorted(emails)
+
+
+class SentEmailOut(BaseModel):
+    id: int
+    demand_id: int
+    subject: Optional[str] = None
+    recipient_emails: Optional[str] = None
+    cc_emails: Optional[str] = None
+    received_at: datetime
+    sent_by_user_id: Optional[int] = None
+    sent_by_name: Optional[str] = None
+
+
+@router.get("/sent", response_model=List[SentEmailOut])
+def sent_emails(db: Session = Depends(get_db), user: User = Depends(get_current_user), limit: int = 500):
+    """E-mails enviados. Admin vê todos; cada usuário vê só os que ELE enviou."""
+    q = (
+        db.query(Message, User.name)
+        .outerjoin(User, User.id == Message.sent_by_user_id)
+        .filter(Message.direction == "out")
+    )
+    if user.role != UserRole.ADMIN:
+        q = q.filter(Message.sent_by_user_id == user.id)
+    rows = q.order_by(Message.received_at.desc()).limit(limit).all()
+    return [
+        SentEmailOut(
+            id=m.id, demand_id=m.demand_id, subject=m.subject,
+            recipient_emails=m.recipient_emails, cc_emails=m.cc_emails,
+            received_at=m.received_at, sent_by_user_id=m.sent_by_user_id, sent_by_name=name,
+        )
+        for m, name in rows
+    ]
 
 
 @router.get("/messages/{message_id}", response_model=MessageOut)

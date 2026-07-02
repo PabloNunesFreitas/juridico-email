@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/inbox", label: "Caixa de Entrada", admin: true },
   { href: "/my-demands", label: "Minhas Solicitações" },
   { href: "/shared", label: "Compartilhadas comigo" },
+  { href: "/sent", label: "E-mails enviados" },
   { href: "/unassigned", label: "Não atribuídas" },
 ];
 

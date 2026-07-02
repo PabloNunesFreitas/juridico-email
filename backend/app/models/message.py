@@ -13,6 +13,7 @@ class Message(Base):
     demand_id = Column(Integer, ForeignKey("demands.id", ondelete="CASCADE"), nullable=False, index=True)
     external_message_id = Column(String(255), index=True, unique=True, nullable=True)
     direction = Column(String(10), nullable=False, default="in")  # in | out
+    sent_by_user_id = Column(Integer, nullable=True, index=True)  # quem enviou (só para direction=out)
     sender_email = Column(String(180), nullable=False)
     sender_name = Column(String(180), nullable=True)
     recipient_emails = Column(Text, nullable=True)  # csv (To)

@@ -324,8 +324,9 @@ async def reply_demand(
         demand_id=demand.id,
         external_message_id=ext_id,
         direction="out",
+        sent_by_user_id=user.id,
         sender_email=from_addr,
-        sender_name=None,
+        sender_name=user.name,
         recipient_emails=", ".join(all_recipients),
         subject=reply_subject,
         body_text=payload.body_text,
@@ -718,8 +719,9 @@ async def compose_email(
         attachments_data.append((f.filename or "arquivo", f.content_type or "application/octet-stream", content))
 
     provider = get_provider_for_account(account)
+    ext_id = None
     try:
-        provider.send_reply(
+        ext_id = provider.send_reply(
             to=to_list[0],
             from_addr=account.email_address,
             subject=subject,
@@ -731,4 +733,46 @@ async def compose_email(
         raise HTTPException(status_code=400, detail="Provider atual não suporta envio de e-mail")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Falha ao enviar: {e}")
+
+    # Registra o envio (aba "E-mails enviados" + agrupa respostas futuras no mesmo caso)
+    from app.services.subject_parser import normalize_subject
+    now = datetime.utcnow()
+    primary = (to_list[0] or "").strip().lower()
+    norm = normalize_subject(subject)
+    demand = None
+    if norm:
+        demand = db.query(Demand).filter(
+            Demand.sender_email == primary, Demand.normalized_subject == norm
+        ).first()
+    if not demand:
+        demand = Demand(
+            sender_email=primary[:180],
+            subject=(subject or "")[:500],
+            normalized_subject=(norm or "")[:500],
+            status=DemandStatus.CAIXA_ENTRADA,
+            last_message_at=now,
+            email_account_id=account.id,
+        )
+        db.add(demand)
+        db.flush()
+    msg = Message(
+        demand_id=demand.id,
+        external_message_id=ext_id,
+        direction="out",
+        sent_by_user_id=user.id,
+        sender_email=account.email_address,
+        sender_name=user.name,
+        recipient_emails=", ".join(to_list + cc_list),
+        cc_emails=", ".join(cc_list) or None,
+        subject=subject,
+        body_text=body_text,
+        received_at=now,
+        has_attachments=bool(attachments_data),
+    )
+    db.add(msg)
+    demand.last_message_at = now
+    log_event(db, event_type="EMAIL_SENT",
+        description=f"{user.name} enviou um novo e-mail para {primary}",
+        user_id=user.id, demand_id=demand.id, commit=False)
+    db.commit()
     return {"ok": True}
