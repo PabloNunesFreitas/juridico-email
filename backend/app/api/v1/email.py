@@ -44,9 +44,9 @@ class SendEmailOut(BaseModel):
 
 
 @router.post("/sync")
-def sync(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def sync(db: Session = Depends(get_db), admin: User = Depends(require_admin), limit: int = Query(60)):
     try:
-        return sync_inbox(db, actor=admin)
+        return sync_inbox(db, actor=admin, limit=limit)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Falha ao sincronizar: {e}")
 
@@ -60,6 +60,27 @@ def sync_status(_: User = Depends(get_current_user)):
 @router.get("/messages", response_model=List[MessageOut])
 def list_messages(db: Session = Depends(get_db), _: User = Depends(get_current_user), limit: int = 100):
     return db.query(Message).order_by(Message.received_at.desc()).limit(limit).all()
+
+
+import re as _re
+_EMAIL_RE = _re.compile(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", _re.IGNORECASE)
+
+
+@router.get("/contacts", response_model=List[str])
+def contacts(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    """Lista os e-mails já usados na plataforma (para autocomplete de destinatário).
+
+    Usa regex para extrair só o endereço limpo (ignora aspas, nomes, < >).
+    """
+    emails: set[str] = set()
+    for (e,) in db.query(Message.sender_email).distinct():
+        for m in _EMAIL_RE.findall(e or ""):
+            emails.add(m.lower())
+    for col in (Message.recipient_emails, Message.cc_emails):
+        for (blob,) in db.query(col).filter(col.isnot(None)).distinct():
+            for m in _EMAIL_RE.findall(blob or ""):
+                emails.add(m.lower())
+    return sorted(emails)
 
 
 @router.get("/messages/{message_id}", response_model=MessageOut)

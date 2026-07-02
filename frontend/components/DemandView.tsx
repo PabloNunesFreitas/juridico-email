@@ -53,6 +53,8 @@ export function DemandView({ source, title, folderId }: Props) {
   // Pastas (para mover)
   const [folders, setFolders] = useState<import("@/lib/api").Folder[]>([]);
   const [moveOpen, setMoveOpen] = useState(false);
+  // Contatos (e-mails já usados) para autocomplete de destinatário
+  const [contacts, setContacts] = useState<string[]>([]);
 
   // Compartilhar
   const [shareOpen, setShareOpen] = useState(false);
@@ -192,6 +194,7 @@ export function DemandView({ source, title, folderId }: Props) {
     api.listUsers().then(setUsers).catch(() => {});
     api.listAccounts().then(setAccounts).catch(() => {});
     api.listFolders().then(setFolders).catch(() => {});
+    api.emailContacts().then(setContacts).catch(() => {});
     function loadPending() {
       api.pendingMentions().then(ids => setPendingMentionIds(new Set(ids))).catch(() => {});
     }
@@ -516,6 +519,7 @@ export function DemandView({ source, title, folderId }: Props) {
                 <input
                   className="flex-1 min-w-24 text-sm outline-none"
                   placeholder="destinatario@exemplo.com"
+                  list="email-contacts"
                   value={composeToInput}
                   onChange={e => setComposeToInput(e.target.value)}
                   onKeyDown={e => {
@@ -538,8 +542,12 @@ export function DemandView({ source, title, folderId }: Props) {
             {/* CC */}
             <div className="mb-3">
               <label className="text-xs text-gray-500 uppercase font-medium">CC:</label>
-              <input className="input text-sm mt-1 w-full" placeholder="email1@exemplo.com, email2@exemplo.com" value={composeCc} onChange={e => setComposeCc(e.target.value)} />
+              <input className="input text-sm mt-1 w-full" placeholder="email1@exemplo.com, email2@exemplo.com" list="email-contacts" value={composeCc} onChange={e => setComposeCc(e.target.value)} />
             </div>
+            {/* Autocomplete de e-mails já usados na plataforma */}
+            <datalist id="email-contacts">
+              {contacts.map(c => <option key={c} value={c} />)}
+            </datalist>
             {/* Assunto */}
             <div className="mb-3">
               <label className="text-xs text-gray-500 uppercase font-medium">Assunto:</label>
