@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ChatMention } from "@/lib/api";
 import { toast } from "@/lib/toast";
+import { fmtDateTime } from "@/lib/date";
 
 export function ChatPanel() {
   const [open, setOpen] = useState(false);
@@ -74,7 +75,7 @@ export function ChatPanel() {
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-gray-800 truncate">{m.demand_subject}</p>
                         <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{m.message}</p>
-                        <p className="text-[10px] text-gray-400 mt-1">{new Date(m.created_at).toLocaleString("pt-BR")}</p>
+                        <p className="text-[10px] text-gray-400 mt-1">{fmtDateTime(m.created_at)}</p>
                       </div>
                     </div>
                   </button>

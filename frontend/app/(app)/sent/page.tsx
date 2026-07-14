@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api, SentEmail, DemandDetail, User } from "@/lib/api";
+import { fmtDate, fmtDateTime } from "@/lib/date";
 
 export default function SentPage() {
   const [items, setItems] = useState<SentEmail[]>([]);
@@ -77,7 +78,7 @@ export default function SentPage() {
               >
                 <div className="flex justify-between gap-2">
                   <span className="font-medium text-sm truncate">{m.subject || "(sem assunto)"}</span>
-                  <span className="text-xs text-gray-400 whitespace-nowrap">{new Date(m.received_at).toLocaleDateString()}</span>
+                  <span className="text-xs text-gray-400 whitespace-nowrap">{fmtDate(m.received_at)}</span>
                 </div>
                 <div className="text-xs text-gray-600 truncate">Para: {m.recipient_emails || "—"}</div>
                 {isAdmin && <div className="text-xs text-gray-400">Enviado por: {m.sent_by_name || "—"}</div>}
@@ -109,7 +110,7 @@ export default function SentPage() {
                             ? `↗ Enviado${msg.sender_name ? " por " + msg.sender_name : ""}`
                             : (msg.sender_name || msg.sender_email)}
                         </span>
-                        <span>{new Date(msg.received_at).toLocaleString()}</span>
+                        <span>{fmtDateTime(msg.received_at)}</span>
                       </div>
                       {msg.recipient_emails && <div className="text-xs text-gray-400">Para: {msg.recipient_emails}</div>}
                       {msg.cc_emails && <div className="text-xs text-gray-400">Cópia: {msg.cc_emails}</div>}

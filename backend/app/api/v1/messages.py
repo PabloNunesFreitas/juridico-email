@@ -38,7 +38,10 @@ def download_attachment(
     if not demand:
         raise HTTPException(status_code=404, detail="Demanda não encontrada")
 
-    if user.role != UserRole.ADMIN and demand.assigned_user_id != user.id:
+    # Mesma regra de visibilidade do get_demand: admin, responsável, demanda
+    # não atribuída (None) ou compartilhada. Sem o None, o anexo de uma demanda
+    # da caixa "Não atribuídas" abria para o admin mas dava 403 para a equipe.
+    if user.role != UserRole.ADMIN and demand.assigned_user_id not in (None, user.id):
         shared = db.query(DemandShare).filter(
             DemandShare.demand_id == demand.id, DemandShare.shared_with_id == user.id
         ).first()

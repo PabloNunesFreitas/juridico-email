@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, Demand, DemandDetail } from "@/lib/api";
 import { toast } from "@/lib/toast";
+import { fmtDate, fmtDateTime } from "@/lib/date";
 
 export default function ArchivePage() {
   const [demands, setDemands] = useState<Demand[]>([]);
@@ -87,7 +88,7 @@ export default function ArchivePage() {
                 <div className="flex-1 min-w-0 px-3 py-3">
                   <div className="flex justify-between items-start gap-2">
                     <div className="font-medium text-sm truncate text-gray-700">{d.sender_name || d.sender_email}</div>
-                    <div className="text-xs text-gray-400 shrink-0">{new Date(d.last_message_at).toLocaleDateString()}</div>
+                    <div className="text-xs text-gray-400 shrink-0">{fmtDate(d.last_message_at)}</div>
                   </div>
                   <div className="text-xs text-gray-500 truncate mt-0.5">{d.subject || "(sem assunto)"}</div>
                   <div className="flex gap-1 mt-1.5 flex-wrap">
@@ -138,7 +139,7 @@ export default function ArchivePage() {
                   <div key={m.id} className={`rounded-lg p-3 text-sm ${m.direction === "out" ? "bg-blue-50 border-l-4 border-blue-400" : "bg-gray-50 border border-gray-100"}`}>
                     <div className="flex justify-between text-xs text-gray-500 mb-1">
                       <span className="font-medium">{m.direction === "out" ? "Enviado" : (m.sender_name || m.sender_email)}</span>
-                      <span>{new Date(m.received_at).toLocaleString()}</span>
+                      <span>{fmtDateTime(m.received_at)}</span>
                     </div>
                     <pre className="text-sm whitespace-pre-wrap text-gray-800 font-sans">{m.body_text || ""}</pre>
                     {m.attachments?.length > 0 && (

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, Comment, Demand, DemandDetail, EmailAccount, User, STATUSES, BANKS } from "@/lib/api";
 import { ActionModal } from "@/components/ActionModal";
 import { toast } from "@/lib/toast";
+import { fmtDate, fmtDateTime } from "@/lib/date";
 
 interface Props {
   source: "all" | "my" | "unassigned" | "shared" | "folder";
@@ -663,27 +664,25 @@ export function DemandView({ source, title, folderId }: Props) {
               >
                 Assumir
               </button>
+              <select
+                className="text-gray-800 text-xs px-2 py-0.5 rounded border-0 disabled:opacity-50"
+                value={bulkAssignUserId}
+                disabled={bulkLoading}
+                onChange={(e) => { if (e.target.value) { setBulkAssignUserId(e.target.value); bulkAssign(Number(e.target.value)); } }}
+              >
+                <option value="">Atribuir a...</option>
+                {users.filter(u => u.active).map(u => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
               {isAdmin && (
-                <>
-                  <select
-                    className="text-gray-800 text-xs px-2 py-0.5 rounded border-0 disabled:opacity-50"
-                    value={bulkAssignUserId}
-                    disabled={bulkLoading}
-                    onChange={(e) => { if (e.target.value) { setBulkAssignUserId(e.target.value); bulkAssign(Number(e.target.value)); } }}
-                  >
-                    <option value="">Atribuir a...</option>
-                    {users.filter(u => u.active).map(u => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                  </select>
-                  <button
-                    className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-medium hover:bg-red-200 disabled:opacity-50"
-                    onClick={bulkUnassign}
-                    disabled={bulkLoading}
-                  >
-                    Remover responsável
-                  </button>
-                </>
+                <button
+                  className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-medium hover:bg-red-200 disabled:opacity-50"
+                  onClick={bulkUnassign}
+                  disabled={bulkLoading}
+                >
+                  Remover responsável
+                </button>
               )}
               <button
                 className="ml-auto text-blue-200 hover:text-white text-xs"
@@ -730,7 +729,7 @@ export function DemandView({ source, title, folderId }: Props) {
                       />
                       <div className="font-medium text-sm truncate">{d.sender_name || d.sender_email}</div>
                     </div>
-                    <div className="text-xs text-gray-500 shrink-0">{new Date(d.last_message_at).toLocaleDateString()}</div>
+                    <div className="text-xs text-gray-500 shrink-0">{fmtDate(d.last_message_at)}</div>
                   </div>
                   <div className="text-xs text-gray-700 truncate mt-0.5 pl-6">{d.subject || "(sem assunto)"}</div>
                   <div className="flex gap-1 mt-1.5 flex-wrap items-center pl-6">
@@ -786,7 +785,7 @@ export function DemandView({ source, title, folderId }: Props) {
                     Assumir demanda
                   </button>
                 )}
-                {isAdmin && (
+                {(isAdmin || !selected.assigned_user || selected.assigned_user.id === me?.id) && (
                   <select className="input w-56" value=""
                     onChange={(e) => {
                       const newUserId = Number(e.target.value);
@@ -940,7 +939,7 @@ export function DemandView({ source, title, folderId }: Props) {
                         )}
                         {m.sender_name || m.sender_email}
                       </span>
-                      <span>{new Date(m.received_at).toLocaleString()}</span>
+                      <span>{fmtDateTime(m.received_at)}</span>
                     </div>
                     {m.recipient_emails && (
                       <div className="text-xs text-gray-500 mt-0.5">Para: {m.recipient_emails}</div>
@@ -999,7 +998,7 @@ export function DemandView({ source, title, folderId }: Props) {
                     <div key={c.id} className="bg-gray-50 rounded-lg px-3 py-2">
                       <div className="flex items-center gap-2 mb-0.5">
                         <span className="text-xs font-semibold text-gray-700">{c.user_name}</span>
-                        <span className="text-xs text-gray-400">{new Date(c.created_at).toLocaleString()}</span>
+                        <span className="text-xs text-gray-400">{fmtDateTime(c.created_at)}</span>
                       </div>
                       <p className="text-sm text-gray-800 whitespace-pre-wrap">
                         {renderMentions(c.content)}
@@ -1244,7 +1243,7 @@ function DemandLogs({ demandId }: { demandId: number }) {
       <div className="space-y-1.5 max-h-64 overflow-y-auto">
         {logs.map((l) => (
           <div key={l.id} className="text-xs">
-            <span className="text-gray-500">{new Date(l.created_at).toLocaleString()}</span> — <span className="font-medium">{l.event_type}</span>
+            <span className="text-gray-500">{fmtDateTime(l.created_at)}</span> — <span className="font-medium">{l.event_type}</span>
             {l.description && <div className="text-gray-700">{l.description}</div>}
           </div>
         ))}

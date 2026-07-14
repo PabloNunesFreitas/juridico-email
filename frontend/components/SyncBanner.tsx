@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
+import { utcMs } from "@/lib/date";
 
 type Status = Awaited<ReturnType<typeof api.syncStatus>>;
 
@@ -25,9 +26,9 @@ export function SyncBanner() {
         const justFinished =
           data.finished_at &&
           data.finished_at !== lastFinishedAtRef.current &&
-          now - new Date(data.finished_at).getTime() < 8000;
+          now - utcMs(data.finished_at) < 8000;
         const finishedRecently =
-          data.finished_at && now - new Date(data.finished_at).getTime() < 8000;
+          data.finished_at && now - utcMs(data.finished_at) < 8000;
 
         if (data.running || finishedRecently) {
           setS(data);

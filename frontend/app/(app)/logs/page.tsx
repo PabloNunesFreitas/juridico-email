@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api, AuditLog } from "@/lib/api";
+import { fmtDateTime } from "@/lib/date";
 
 const EVENT_LABELS: Record<string, string> = {
   DEMAND_CREATED: "Demanda criada",
@@ -68,7 +69,7 @@ export default function LogsPage() {
           <tbody>
             {logs.map((l) => (
               <tr key={l.id} className="border-t">
-                <td className="p-3 whitespace-nowrap text-xs text-gray-500">{new Date(l.created_at).toLocaleString("pt-BR")}</td>
+                <td className="p-3 whitespace-nowrap text-xs text-gray-500">{fmtDateTime(l.created_at)}</td>
                 <td className="p-3">
                   <span className="badge bg-gray-100 text-gray-700 whitespace-nowrap">
                     {EVENT_LABELS[l.event_type] ?? l.event_type}

@@ -255,11 +255,14 @@ def assign(
     """Atribui demanda. Se bulk=true, tambem atribui todas as outras demandas do
     mesmo remetente que estejam sem responsavel (ou ja com este mesmo usuario).
     Demandas atribuidas a outros usuarios sao mantidas como estao."""
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Apenas admins podem atribuir")
     demand = db.query(Demand).filter(Demand.id == demand_id).first()
     if not demand:
         raise HTTPException(status_code=404, detail="Demanda não encontrada")
+    # Qualquer usuário pode atribuir uma demanda livre ou já dele (inclusive a um
+    # colega), mas não pode "roubar" uma demanda que já é de outra pessoa — isso
+    # só o admin faz. (O modo bulk em assign_demand já ignora demandas de terceiros.)
+    if user.role != UserRole.ADMIN and demand.assigned_user_id not in (None, user.id):
+        raise HTTPException(status_code=403, detail="Esta demanda já está com outro responsável — só o admin pode transferi-la.")
     target = db.query(User).filter(User.id == payload.user_id, User.active.is_(True)).first()
     if not target:
         raise HTTPException(status_code=404, detail="Usuário inválido")

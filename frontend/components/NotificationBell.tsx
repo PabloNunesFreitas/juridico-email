@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { api, Notification } from "@/lib/api";
+import { fmtDateTime } from "@/lib/date";
 
 export function NotificationBell() {
   const [count, setCount] = useState(0);
@@ -116,7 +117,7 @@ export function NotificationBell() {
                   </span>
                 </div>
                 <p className="text-gray-700 mt-1 leading-snug">{n.message}</p>
-                <p className="text-gray-400 text-xs mt-1">{new Date(n.created_at).toLocaleString()}</p>
+                <p className="text-gray-400 text-xs mt-1">{fmtDateTime(n.created_at)}</p>
               </div>
             ))}
           </div>
