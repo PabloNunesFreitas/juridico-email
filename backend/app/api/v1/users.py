@@ -22,7 +22,10 @@ def _generate_password(length: int = 12) -> str:
 
 
 @router.get("", response_model=List[UserOut])
-def list_users(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+def list_users(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    # Qualquer usuário logado pode listar os colegas — necessário para
+    # compartilhar demandas e mencionar (@) na conversa interna.
+    # As ações de gestão (criar/editar/resetar/desativar) seguem só-admin abaixo.
     return db.query(User).order_by(User.created_at.desc()).all()
 
 
