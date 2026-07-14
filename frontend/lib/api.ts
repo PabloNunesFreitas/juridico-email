@@ -128,7 +128,12 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `HTTP ${res.status}`);
+    let msg = text;
+    try {
+      const j = JSON.parse(text);
+      if (j?.detail) msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+    } catch { /* corpo não é JSON: usa o texto cru */ }
+    throw new Error(msg || `HTTP ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
   return res.json();

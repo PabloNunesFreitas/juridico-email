@@ -20,6 +20,48 @@ from app.models.user import User, UserRole
 from app.schemas.demand import AssignIn, CoAssigneeOut, ComposeIn, CommentOut, DemandDetail, DemandOut, DemandUpdate, ReplyIn, StatusIn
 from app.services.audit_service import log_event
 
+import re
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _clean_recipients(emails, campo: str = "Para") -> List[str]:
+    """Valida/normaliza destinatários antes do envio.
+
+    Lança HTTP 400 com mensagem clara (em vez de deixar o SMTP estourar um
+    erro técnico) quando algum endereço está vazio ou malformado.
+    """
+    limpos: List[str] = []
+    for raw in (emails or []):
+        # Aceita vários endereços colados no mesmo campo (vírgula ou ponto-e-vírgula)
+        for parte in re.split(r"[,;]", raw or ""):
+            addr = parte.strip()
+            if not addr:
+                continue
+            if "\n" in addr or "\r" in addr or not _EMAIL_RE.match(addr):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Endereço de e-mail inválido no campo {campo}: “{addr}”. "
+                           f"Confira se está escrito corretamente (ex.: nome@dominio.com), "
+                           f"sem espaços sobrando.",
+                )
+            limpos.append(addr)
+    return limpos
+
+
+def _friendly_send_error(e: Exception) -> str:
+    """Traduz erros de envio SMTP para uma mensagem que o usuário entende."""
+    txt = str(e).lower()
+    if "501" in txt or "5.1.3" in txt or "recipient" in txt or "destinat" in txt:
+        return ("O servidor de e-mail recusou o destinatário. "
+                "Verifique se todos os endereços em Para/Cc estão corretos.")
+    if "550" in txt or "554" in txt or "5.1.1" in txt:
+        return ("O servidor de e-mail recusou a mensagem — o destinatário pode "
+                "não existir ou estar bloqueado. Confira o endereço.")
+    if "535" in txt or "auth" in txt:
+        return "Falha de autenticação na conta de e-mail. Avise o administrador."
+    return "Não foi possível enviar o e-mail. Tente novamente ou avise o administrador."
+
 
 class CommentIn(BaseModel):
     content: str
@@ -296,9 +338,10 @@ async def reply_demand(
     # Resposta: garante o prefixo "Re:" (compose envia sem prefixo)
     reply_subject = subject if subject.lower().startswith("re:") else f"Re: {subject}"
 
-    primary_to = (payload.to_emails or [demand.sender_email])
+    primary_to = _clean_recipients(payload.to_emails or [demand.sender_email], "Para")
     if not primary_to:
-        raise HTTPException(status_code=400, detail="Informe ao menos um destinatário")
+        raise HTTPException(status_code=400, detail="Informe ao menos um destinatário no campo Para.")
+    cc_clean = _clean_recipients(payload.cc or [], "Cc")
 
     attachments_data = []
     for f in files:
@@ -312,11 +355,13 @@ async def reply_demand(
             subject=reply_subject,
             body_text=payload.body_text,
             thread_id=demand.external_thread_id or None,
-            cc=(primary_to[1:] + (payload.cc or [])) or None,
+            cc=(primary_to[1:] + cc_clean) or None,
             attachments=attachments_data or None,
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Falha ao enviar e-mail: {e}")
+        raise HTTPException(status_code=502, detail=_friendly_send_error(e))
 
     now = datetime.utcnow()
     all_recipients = (payload.to_emails or [demand.sender_email]) + (payload.cc or [])
@@ -704,8 +749,10 @@ async def compose_email(
 ):
     """Envia um novo e-mail (não vinculado a uma demanda existente)."""
     from app.models.email_account import EmailAccount
-    to_list: List[str] = json.loads(to_emails)
-    cc_list: List[str] = json.loads(cc)
+    to_list: List[str] = _clean_recipients(json.loads(to_emails), "Para")
+    cc_list: List[str] = _clean_recipients(json.loads(cc), "Cc")
+    if not to_list:
+        raise HTTPException(status_code=400, detail="Informe ao menos um destinatário no campo Para.")
     if account_id:
         account = db.query(EmailAccount).filter(EmailAccount.id == account_id, EmailAccount.active == True).first()  # noqa: E712
     else:
@@ -731,8 +778,10 @@ async def compose_email(
         )
     except NotImplementedError:
         raise HTTPException(status_code=400, detail="Provider atual não suporta envio de e-mail")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Falha ao enviar: {e}")
+        raise HTTPException(status_code=502, detail=_friendly_send_error(e))
 
     # Registra o envio (aba "E-mails enviados" + agrupa respostas futuras no mesmo caso)
     from app.services.subject_parser import normalize_subject
