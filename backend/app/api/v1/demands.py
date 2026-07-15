@@ -367,8 +367,14 @@ async def reply_demand(
     )
     if not demand:
         raise HTTPException(status_code=404, detail="Demanda não encontrada")
+    # Admin, responsável OU quem tem a demanda compartilhada pode responder
+    # (mesma regra do comentário/compartilhamento — quem colabora consegue responder).
     if user.role != UserRole.ADMIN and demand.assigned_user_id != user.id:
-        raise HTTPException(status_code=403, detail="Sem permissão para responder esta demanda")
+        shared = db.query(DemandShare).filter(
+            DemandShare.demand_id == demand_id, DemandShare.shared_with_id == user.id
+        ).first()
+        if not shared:
+            raise HTTPException(status_code=403, detail="Sem permissão para responder esta demanda")
     if not demand.email_account:
         raise HTTPException(status_code=400, detail="Demanda sem conta de e-mail associada — não é possível enviar resposta")
 
