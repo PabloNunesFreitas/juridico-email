@@ -288,32 +288,23 @@ class GmailEmailProvider(EmailProvider):
         data = resp.json().get("data", "")
         return _b64url_decode(data)
 
-    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None, attachments: Optional[List[tuple]] = None) -> str:
+    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None, attachments: Optional[List[tuple]] = None, body_html: Optional[str] = None, inline_images: Optional[List[tuple]] = None) -> str:
         """Envia resposta por e-mail e retorna o external_id da mensagem enviada.
         attachments: lista de (filename, mime_type, bytes)
+        inline_images: lista de (filename, mime_type, bytes, cid) para print no corpo
         """
-        import email.mime.text as _mime_text
-        import email.mime.multipart as _mime_multi
-        import email.mime.base as _mime_base
-        from email import encoders as _encoders
+        from app.providers._mime import build_email_mime
         subject_str = subject if subject.lower().startswith("re:") else f"Re: {subject}"
-        if attachments:
-            msg: Any = _mime_multi.MIMEMultipart()
-            msg.attach(_mime_text.MIMEText(body_text, "plain", "utf-8"))
-            for fname, mime_type, data in attachments:
-                main_type, sub_type = mime_type.split("/", 1) if "/" in mime_type else ("application", "octet-stream")
-                part = _mime_base.MIMEBase(main_type, sub_type)
-                part.set_payload(data)
-                _encoders.encode_base64(part)
-                part.add_header("Content-Disposition", "attachment", filename=fname)
-                msg.attach(part)
-        else:
-            msg = _mime_text.MIMEText(body_text, "plain", "utf-8")
-        msg["To"] = to
-        msg["From"] = from_addr
-        msg["Subject"] = subject_str
-        if cc:
-            msg["Cc"] = ", ".join(cc)
+        msg = build_email_mime(
+            from_addr=from_addr,
+            to=to,
+            subject=subject_str,
+            body_text=body_text,
+            body_html=body_html,
+            cc=cc,
+            attachments=attachments,
+            inline_images=inline_images,
+        )
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
         payload: dict = {"raw": raw}
         if thread_id:

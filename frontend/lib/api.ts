@@ -209,12 +209,13 @@ export const api = {
   updateDemand: (id: number, data: Partial<{ client_name: string; nup: string; bank: string; status: string }>) =>
     request<Demand>(`/api/v1/demands/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   demandLogs: (id: number) => request<AuditLog[]>(`/api/v1/demands/${id}/logs`),
-  replyDemand: (id: number, body_text: string, cc: string[] = [], to_emails?: string[], files?: File[]) => {
+  replyDemand: (id: number, body_text: string, cc: string[] = [], to_emails?: string[], files?: File[], inlineImages?: File[]) => {
     const fd = new FormData();
     fd.append("body_text", body_text);
     fd.append("to_emails", JSON.stringify(to_emails ?? []));
     fd.append("cc", JSON.stringify(cc));
     (files ?? []).forEach(f => fd.append("files", f));
+    (inlineImages ?? []).forEach(f => fd.append("inline_images", f));
     return request<DemandDetail>(`/api/v1/demands/${id}/reply`, { method: "POST", body: fd });
   },
   archiveDemand: (id: number, folder_id: number) =>
@@ -269,7 +270,7 @@ export const api = {
     request<Demand>(`/api/v1/demands/${demandId}/co-assign`, { method: "POST", body: JSON.stringify({ user_id }) }),
   coUnassign: (demandId: number, shareId: number) =>
     request<Demand>(`/api/v1/demands/${demandId}/co-assign/${shareId}`, { method: "DELETE" }),
-  composeEmail: (data: { to_emails: string[]; cc: string[]; subject: string; body_text: string; account_id?: number; files?: File[] }) => {
+  composeEmail: (data: { to_emails: string[]; cc: string[]; subject: string; body_text: string; account_id?: number; files?: File[]; inlineImages?: File[] }) => {
     const fd = new FormData();
     fd.append("to_emails", JSON.stringify(data.to_emails));
     fd.append("cc", JSON.stringify(data.cc));
@@ -277,6 +278,7 @@ export const api = {
     fd.append("body_text", data.body_text);
     if (data.account_id) fd.append("account_id", String(data.account_id));
     (data.files ?? []).forEach(f => fd.append("files", f));
+    (data.inlineImages ?? []).forEach(f => fd.append("inline_images", f));
     return request<{ ok: boolean }>("/api/v1/demands/compose", { method: "POST", body: fd });
   },
 

@@ -12,6 +12,7 @@ from email import encoders
 from typing import List, Optional
 
 from app.providers.email_provider import EmailProvider, ProviderMessage, ProviderAttachment
+from app.providers._mime import build_email_mime
 
 log = logging.getLogger("imap_provider")
 
@@ -338,28 +339,25 @@ class IMAPEmailProvider(EmailProvider):
         thread_id: Optional[str] = None,
         cc: Optional[List[str]] = None,
         attachments: Optional[List[tuple]] = None,
+        body_html: Optional[str] = None,
+        inline_images: Optional[List[tuple]] = None,
     ) -> str:
-        """Envia resposta via SMTP."""
+        """Envia resposta via SMTP.
+
+        Se houver body_html/inline_images, envia como HTML com imagens embutidas
+        (print no corpo); senão, texto puro como antes. O assunto vai exatamente
+        como recebido (o "Re:" já vem no assunto quando é resposta)."""
         try:
-            msg = MIMEMultipart()
-            msg["From"] = from_addr
-            msg["To"] = to
-            if cc:
-                msg["Cc"] = ", ".join(cc)
-            # Envia o assunto exatamente como recebido. Quem responde já manda
-            # o "Re:" no assunto; e-mail novo (compose) vai sem prefixo.
-            msg["Subject"] = subject
-
-            msg.attach(MIMEText(body_text, "plain"))
-
-            # Anexos
-            if attachments:
-                for filename, mime_type, data in attachments:
-                    part = MIMEBase("application", "octet-stream")
-                    part.set_payload(data)
-                    encoders.encode_base64(part)
-                    part.add_header("Content-Disposition", "attachment", filename=filename)
-                    msg.attach(part)
+            msg = build_email_mime(
+                from_addr=from_addr,
+                to=to,
+                subject=subject,
+                body_text=body_text,
+                body_html=body_html,
+                cc=cc,
+                attachments=attachments,
+                inline_images=inline_images,
+            )
 
             # Enviar via SMTP
             with smtplib.SMTP(self.smtp_host, self.smtp_port) as smtp:

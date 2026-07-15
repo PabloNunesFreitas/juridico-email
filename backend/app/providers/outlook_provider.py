@@ -173,29 +173,41 @@ class OutlookEmailProvider(EmailProvider):
         content = data.get("contentBytes", "")
         return _b64.b64decode(content) if content else b""
 
-    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None, attachments: Optional[List[tuple]] = None) -> str:
+    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None, attachments: Optional[List[tuple]] = None, body_html: Optional[str] = None, inline_images: Optional[List[tuple]] = None) -> str:
         """Envia resposta via Microsoft Graph e retorna o id da mensagem enviada.
         attachments: lista de (filename, mime_type, bytes)
+        inline_images: lista de (filename, mime_type, bytes, cid) para print no corpo
         """
         import base64 as _b64
         subject_str = subject if subject.lower().startswith("re:") else f"Re: {subject}"
+        use_html = bool(body_html) or bool(inline_images)
         msg: dict = {
             "subject": subject_str,
-            "body": {"contentType": "Text", "content": body_text},
+            "body": {"contentType": "HTML" if use_html else "Text", "content": body_html if use_html else body_text},
             "toRecipients": [{"emailAddress": {"address": to}}],
         }
         if cc:
             msg["ccRecipients"] = [{"emailAddress": {"address": addr}} for addr in cc]
-        if attachments:
-            msg["attachments"] = [
-                {
-                    "@odata.type": "#microsoft.graph.fileAttachment",
-                    "name": fname,
-                    "contentType": mime_type,
-                    "contentBytes": _b64.b64encode(data).decode(),
-                }
-                for fname, mime_type, data in attachments
-            ]
+        graph_attachments = [
+            {
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                "name": fname,
+                "contentType": mime_type,
+                "contentBytes": _b64.b64encode(data).decode(),
+            }
+            for fname, mime_type, data in (attachments or [])
+        ]
+        for fname, mime_type, data, cid in (inline_images or []):
+            graph_attachments.append({
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                "name": fname,
+                "contentType": mime_type,
+                "contentBytes": _b64.b64encode(data).decode(),
+                "isInline": True,
+                "contentId": cid,
+            })
+        if graph_attachments:
+            msg["attachments"] = graph_attachments
         body = {"message": msg, "saveToSentItems": True}
         url = f"{GRAPH_BASE}{self._user_path}/sendMail"
         resp = httpx.post(url, headers=self._headers(), json=body, timeout=30)

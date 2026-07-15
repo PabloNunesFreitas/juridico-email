@@ -11,6 +11,23 @@ interface Props {
   folderId?: number;
 }
 
+// Extrai imagens coladas (Ctrl+V) do clipboard — para "print no corpo do e-mail".
+function imagesFromClipboard(e: React.ClipboardEvent): File[] {
+  const out: File[] = [];
+  const items = e.clipboardData?.items || [];
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it.kind === "file" && it.type.startsWith("image/")) {
+      const f = it.getAsFile();
+      if (f) {
+        const ext = (it.type.split("/")[1] || "png").split("+")[0];
+        out.push(new File([f], f.name && f.name !== "image.png" ? f.name : `print-${Date.now()}.${ext}`, { type: it.type }));
+      }
+    }
+  }
+  return out;
+}
+
 export function DemandView({ source, title, folderId }: Props) {
   const [demands, setDemands] = useState<Demand[]>([]);
   const [selected, setSelected] = useState<DemandDetail | null>(null);
@@ -50,6 +67,9 @@ export function DemandView({ source, title, folderId }: Props) {
   const [composeError, setComposeError] = useState<string | null>(null);
   const [composeFiles, setComposeFiles] = useState<File[]>([]);
   const [replyFiles, setReplyFiles] = useState<File[]>([]);
+  // Prints embutidos no corpo do e-mail (aparecem dentro da mensagem, não como anexo)
+  const [composeInlineImages, setComposeInlineImages] = useState<File[]>([]);
+  const [replyInlineImages, setReplyInlineImages] = useState<File[]>([]);
 
   // Pastas (para mover)
   const [folders, setFolders] = useState<import("@/lib/api").Folder[]>([]);
@@ -331,11 +351,12 @@ export function DemandView({ source, title, folderId }: Props) {
     setReplySuccess(false);
     try {
       const ccList = replyCc.split(",").map(s => s.trim()).filter(Boolean);
-      const updated = await api.replyDemand(selected.id, replyText.trim(), ccList, replyTo, replyFiles);
+      const updated = await api.replyDemand(selected.id, replyText.trim(), ccList, replyTo, replyFiles, replyInlineImages);
       setSelected(updated);
       setReplyText("");
       setReplyCc("");
       setReplyFiles([]);
+      setReplyInlineImages([]);
       setReplySuccess(true);
       setTimeout(() => setReplySuccess(false), 3000);
       await loadList();
@@ -354,7 +375,7 @@ export function DemandView({ source, title, folderId }: Props) {
     setComposeError(null);
     try {
       const ccList = composeCc.split(",").map(s => s.trim()).filter(Boolean);
-      await api.composeEmail({ to_emails: composeTo, cc: ccList, subject: composeSubject.trim(), body_text: composeBody.trim(), account_id: composeAccountId ?? undefined, files: composeFiles });
+      await api.composeEmail({ to_emails: composeTo, cc: ccList, subject: composeSubject.trim(), body_text: composeBody.trim(), account_id: composeAccountId ?? undefined, files: composeFiles, inlineImages: composeInlineImages });
       setComposeOpen(false);
       setComposeTo([]);
       setComposeToInput("");
@@ -363,6 +384,7 @@ export function DemandView({ source, title, folderId }: Props) {
       setComposeBody("");
       setComposeAccountId(null);
       setComposeFiles([]);
+      setComposeInlineImages([]);
       toast("E-mail enviado!", "success");
     } catch (e: any) {
       setComposeError(e.message);
@@ -557,7 +579,36 @@ export function DemandView({ source, title, folderId }: Props) {
             {/* Corpo */}
             <div className="mb-3">
               <label className="text-xs text-gray-500 uppercase font-medium">Mensagem:</label>
-              <textarea className="input text-sm mt-1 w-full" rows={6} placeholder="Digite a mensagem..." value={composeBody} onChange={e => setComposeBody(e.target.value)} />
+              <textarea
+                className="input text-sm mt-1 w-full"
+                rows={6}
+                placeholder="Digite a mensagem... (dica: cole um print com Ctrl+V para ele ir dentro do e-mail)"
+                value={composeBody}
+                onChange={e => setComposeBody(e.target.value)}
+                onPaste={e => { const imgs = imagesFromClipboard(e); if (imgs.length) { setComposeInlineImages(prev => [...prev, ...imgs]); toast("Print adicionado ao corpo do e-mail.", "success"); } }}
+              />
+              <div className="mt-1 flex items-center gap-2">
+                <label className="inline-flex items-center gap-1 text-xs text-blue-700 hover:underline cursor-pointer">
+                  🖼️ Inserir print no corpo
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={e => {
+                    const imgs = Array.from(e.target.files ?? []).filter(f => f.type.startsWith("image/") && f.size <= 10 * 1024 * 1024);
+                    if (imgs.length) setComposeInlineImages(prev => [...prev, ...imgs]);
+                    e.target.value = "";
+                  }} />
+                </label>
+                <span className="text-[11px] text-gray-400">a imagem aparece dentro da mensagem, não como anexo</span>
+              </div>
+              {composeInlineImages.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {composeInlineImages.map((f, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 text-xs px-2 py-1 rounded">
+                      <img src={URL.createObjectURL(f)} alt="print" className="w-8 h-8 object-cover rounded" />
+                      no corpo
+                      <button type="button" onClick={() => setComposeInlineImages(prev => prev.filter((_, j) => j !== i))} className="text-blue-400 hover:text-red-500">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             {/* Anexos */}
             <div className="mb-3">
@@ -1102,11 +1153,34 @@ export function DemandView({ source, title, folderId }: Props) {
                 <textarea
                   className="input w-full mt-1 text-sm"
                   rows={5}
-                  placeholder="Digite sua resposta..."
+                  placeholder="Digite sua resposta... (dica: cole um print com Ctrl+V para ele ir dentro do e-mail)"
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
+                  onPaste={e => { const imgs = imagesFromClipboard(e); if (imgs.length) { setReplyInlineImages(prev => [...prev, ...imgs]); toast("Print adicionado ao corpo do e-mail.", "success"); } }}
                   disabled={replySending}
                 />
+                <div className="mt-1 flex items-center gap-2">
+                  <label className="inline-flex items-center gap-1 text-xs text-blue-700 hover:underline cursor-pointer">
+                    🖼️ Inserir print no corpo
+                    <input type="file" accept="image/*" multiple className="hidden" disabled={replySending} onChange={e => {
+                      const imgs = Array.from(e.target.files ?? []).filter(f => f.type.startsWith("image/") && f.size <= 10 * 1024 * 1024);
+                      if (imgs.length) setReplyInlineImages(prev => [...prev, ...imgs]);
+                      e.target.value = "";
+                    }} />
+                  </label>
+                  <span className="text-[11px] text-gray-400">aparece dentro da mensagem, não como anexo</span>
+                </div>
+                {replyInlineImages.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {replyInlineImages.map((f, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 text-xs px-2 py-1 rounded">
+                        <img src={URL.createObjectURL(f)} alt="print" className="w-8 h-8 object-cover rounded" />
+                        no corpo
+                        <button type="button" onClick={() => setReplyInlineImages(prev => prev.filter((_, j) => j !== i))} className="text-blue-400 hover:text-red-500">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {/* Anexos na resposta */}
                 <div className="mt-2">
                   <input type="file" multiple className="text-sm w-full" disabled={replySending} onChange={e => {

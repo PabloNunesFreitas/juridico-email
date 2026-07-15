@@ -49,6 +49,42 @@ def _clean_recipients(emails, campo: str = "Para") -> List[str]:
     return limpos
 
 
+import html as _html
+
+_MAX_INLINE_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB por print
+
+
+async def _read_inline_images(files) -> list:
+    """Lê os prints (UploadFile de imagem) e devolve (filename, mime, bytes, cid)."""
+    out = []
+    for i, f in enumerate(files or []):
+        content = await f.read()
+        if not content:
+            continue
+        mime = (f.content_type or "").lower() or "image/png"
+        if not mime.startswith("image/"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"O arquivo “{f.filename or 'sem nome'}” não é uma imagem — só dá para inserir imagens no corpo.",
+            )
+        if len(content) > _MAX_INLINE_IMAGE_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"A imagem “{f.filename or 'print'}” é muito grande (máx. 10 MB).",
+            )
+        out.append((f.filename or f"print{i}.png", mime, content, f"print{i}@juridico"))
+    return out
+
+
+def _build_html_body(body_text: str, inline: list) -> str:
+    """Monta o corpo em HTML a partir do texto digitado + prints embutidos (cid)."""
+    esc = _html.escape(body_text or "").replace("\r\n", "\n").replace("\n", "<br>")
+    parts = [f'<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px">{esc}</div>']
+    for (_fn, _mt, _data, cid) in inline:
+        parts.append(f'<div style="margin-top:12px"><img src="cid:{cid}" style="max-width:100%;height:auto" /></div>')
+    return "".join(parts)
+
+
 def _friendly_send_error(e: Exception) -> str:
     """Traduz erros de envio SMTP para uma mensagem que o usuário entende."""
     txt = str(e).lower()
@@ -313,6 +349,7 @@ async def reply_demand(
     to_emails: str = Form("[]"),
     cc: str = Form("[]"),
     files: List[UploadFile] = File(default=[]),
+    inline_images: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -351,6 +388,9 @@ async def reply_demand(
         content = await f.read()
         attachments_data.append((f.filename or "arquivo", f.content_type or "application/octet-stream", content))
 
+    inline = await _read_inline_images(inline_images)
+    body_html = _build_html_body(payload.body_text, inline) if inline else None
+
     try:
         ext_id = provider.send_reply(
             to=primary_to[0],
@@ -360,6 +400,8 @@ async def reply_demand(
             thread_id=demand.external_thread_id or None,
             cc=(primary_to[1:] + cc_clean) or None,
             attachments=attachments_data or None,
+            body_html=body_html,
+            inline_images=inline or None,
         )
     except HTTPException:
         raise
@@ -747,6 +789,7 @@ async def compose_email(
     body_text: str = Form(...),
     account_id: Optional[int] = Form(None),
     files: List[UploadFile] = File(default=[]),
+    inline_images: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -768,6 +811,9 @@ async def compose_email(
         content = await f.read()
         attachments_data.append((f.filename or "arquivo", f.content_type or "application/octet-stream", content))
 
+    inline = await _read_inline_images(inline_images)
+    body_html = _build_html_body(body_text, inline) if inline else None
+
     provider = get_provider_for_account(account)
     ext_id = None
     try:
@@ -778,6 +824,8 @@ async def compose_email(
             body_text=body_text,
             cc=(to_list[1:] + cc_list) or None,
             attachments=attachments_data or None,
+            body_html=body_html,
+            inline_images=inline or None,
         )
     except NotImplementedError:
         raise HTTPException(status_code=400, detail="Provider atual não suporta envio de e-mail")
