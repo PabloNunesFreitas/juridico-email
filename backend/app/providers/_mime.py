@@ -46,6 +46,9 @@ def build_email_mime(
     cc: Optional[List[str]] = None,
     attachments: Optional[List[Attachment]] = None,
     inline_images: Optional[List[InlineImage]] = None,
+    message_id: Optional[str] = None,
+    in_reply_to: Optional[str] = None,
+    references: Optional[str] = None,
 ):
     """Monta a mensagem MIME.
 
@@ -91,4 +94,12 @@ def build_email_mime(
     root["Subject"] = subject
     if cc:
         root["Cc"] = ", ".join(cc)
+    # Cabeçalhos de encadeamento (threading) — fazem o Outlook/Gmail agruparem a
+    # resposta na mesma conversa do e-mail original.
+    if message_id:
+        root["Message-ID"] = message_id
+    if in_reply_to:
+        root["In-Reply-To"] = in_reply_to
+    if references:
+        root["References"] = references
     return root

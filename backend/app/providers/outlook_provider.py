@@ -173,7 +173,7 @@ class OutlookEmailProvider(EmailProvider):
         content = data.get("contentBytes", "")
         return _b64.b64decode(content) if content else b""
 
-    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None, attachments: Optional[List[tuple]] = None, body_html: Optional[str] = None, inline_images: Optional[List[tuple]] = None) -> str:
+    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None, attachments: Optional[List[tuple]] = None, body_html: Optional[str] = None, inline_images: Optional[List[tuple]] = None, message_id: Optional[str] = None, in_reply_to: Optional[str] = None, references: Optional[str] = None) -> str:
         """Envia resposta via Microsoft Graph e retorna o id da mensagem enviada.
         attachments: lista de (filename, mime_type, bytes)
         inline_images: lista de (filename, mime_type, bytes, cid) para print no corpo
@@ -208,6 +208,15 @@ class OutlookEmailProvider(EmailProvider):
             })
         if graph_attachments:
             msg["attachments"] = graph_attachments
+        # Encadeamento: Graph gerencia a conversa internamente, mas repassamos
+        # In-Reply-To/References como cabeçalhos de internet (best-effort).
+        headers = []
+        if in_reply_to:
+            headers.append({"name": "In-Reply-To", "value": in_reply_to})
+        if references:
+            headers.append({"name": "References", "value": references})
+        if headers:
+            msg["internetMessageHeaders"] = headers
         body = {"message": msg, "saveToSentItems": True}
         url = f"{GRAPH_BASE}{self._user_path}/sendMail"
         resp = httpx.post(url, headers=self._headers(), json=body, timeout=30)

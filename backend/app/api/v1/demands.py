@@ -85,6 +85,46 @@ def _build_html_body(body_text: str, inline: list) -> str:
     return "".join(parts)
 
 
+from email.utils import make_msgid
+
+
+def _domain_of(addr: str) -> str:
+    return ((addr or "").split("@")[-1] or "juridico").strip() or "juridico"
+
+
+def _pick_reply_target(demand):
+    """Mensagem à qual a resposta se encadeia: a mais recente recebida (com
+    external_message_id); se não houver recebida, a mais recente qualquer."""
+    msgs = [m for m in (demand.messages or []) if m.external_message_id]
+    if not msgs:
+        return None
+    inbound = [m for m in msgs if (m.direction or "in") == "in"]
+    pool = inbound or msgs
+    return max(pool, key=lambda m: m.received_at)
+
+
+def _thread_headers_for_reply(provider, demand, from_addr):
+    """Best-effort: gera Message-ID próprio e busca In-Reply-To/References do
+    e-mail original para encadear a resposta no Outlook/Gmail. Nunca lança —
+    se falhar, devolve só o Message-ID e o envio segue sem encadear."""
+    message_id = make_msgid(domain=_domain_of(from_addr))
+    in_reply_to = None
+    references = None
+    try:
+        target = _pick_reply_target(demand)
+        getter = getattr(provider, "get_thread_headers", None)
+        if target and getter:
+            h = getter(target.external_message_id) or {}
+            parent = h.get("message_id")
+            if parent:
+                in_reply_to = parent
+                chain = h.get("references")
+                references = f"{chain} {parent}" if chain else parent
+    except Exception:
+        pass
+    return message_id, in_reply_to, references
+
+
 def _friendly_send_error(e: Exception) -> str:
     """Traduz erros de envio SMTP para uma mensagem que o usuário entende."""
     txt = str(e).lower()
@@ -396,6 +436,7 @@ async def reply_demand(
 
     inline = await _read_inline_images(inline_images)
     body_html = _build_html_body(payload.body_text, inline) if inline else None
+    msg_id, in_reply_to, references = _thread_headers_for_reply(provider, demand, from_addr)
 
     try:
         ext_id = provider.send_reply(
@@ -408,6 +449,9 @@ async def reply_demand(
             attachments=attachments_data or None,
             body_html=body_html,
             inline_images=inline or None,
+            message_id=msg_id,
+            in_reply_to=in_reply_to,
+            references=references,
         )
     except HTTPException:
         raise
@@ -832,6 +876,7 @@ async def compose_email(
             attachments=attachments_data or None,
             body_html=body_html,
             inline_images=inline or None,
+            message_id=make_msgid(domain=_domain_of(account.email_address)),
         )
     except NotImplementedError:
         raise HTTPException(status_code=400, detail="Provider atual não suporta envio de e-mail")

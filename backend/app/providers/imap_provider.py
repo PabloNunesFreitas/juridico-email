@@ -341,6 +341,9 @@ class IMAPEmailProvider(EmailProvider):
         attachments: Optional[List[tuple]] = None,
         body_html: Optional[str] = None,
         inline_images: Optional[List[tuple]] = None,
+        message_id: Optional[str] = None,
+        in_reply_to: Optional[str] = None,
+        references: Optional[str] = None,
     ) -> str:
         """Envia resposta via SMTP.
 
@@ -357,6 +360,9 @@ class IMAPEmailProvider(EmailProvider):
                 cc=cc,
                 attachments=attachments,
                 inline_images=inline_images,
+                message_id=message_id,
+                in_reply_to=in_reply_to,
+                references=references,
             )
 
             # Enviar via SMTP
@@ -370,6 +376,35 @@ class IMAPEmailProvider(EmailProvider):
         except Exception as e:
             log.error(f"Erro ao enviar e-mail SMTP: {e}")
             raise RuntimeError(f"Falha ao enviar e-mail: {e}")
+
+    def get_thread_headers(self, external_message_id: str) -> dict:
+        """Busca os cabeçalhos de encadeamento do e-mail original (leve, só headers).
+
+        Retorna {'message_id', 'references', 'in_reply_to'} para montar o
+        In-Reply-To/References da resposta. Best-effort: qualquer falha devolve {}
+        e o e-mail é enviado mesmo assim (só sem encadear)."""
+        try:
+            folder, ident, is_uid = self._parse_external_id(external_message_id)
+            imap = self._ensure_imap()
+            self._select_folder(imap, folder, readonly=True)
+            crit = "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID REFERENCES IN-REPLY-TO)])"
+            if is_uid:
+                status, data = imap.uid("FETCH", ident, crit)
+            else:
+                status, data = imap.fetch(ident, crit)
+            if status != "OK" or not data or not data[0]:
+                return {}
+            hdr = message_from_bytes(data[0][1])
+            def _clean(v):
+                return " ".join(v.split()) if v else None
+            return {
+                "message_id": _clean(hdr.get("Message-ID")),
+                "references": _clean(hdr.get("References")),
+                "in_reply_to": _clean(hdr.get("In-Reply-To")),
+            }
+        except Exception as e:
+            log.warning(f"Não foi possível obter headers de encadeamento: {e}")
+            return {}
 
     def get_attachment(self, message_id: str, attachment_id: str) -> bytes:
         """Busca bytes de um anexo (ID composto pasta\\x1fUID ou legado)."""
