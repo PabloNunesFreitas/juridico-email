@@ -393,6 +393,7 @@ class IMAPEmailProvider(EmailProvider):
         message_id: Optional[str] = None,
         in_reply_to: Optional[str] = None,
         references: Optional[str] = None,
+        thread_index: Optional[str] = None,
     ) -> str:
         """Envia resposta via SMTP.
 
@@ -412,6 +413,7 @@ class IMAPEmailProvider(EmailProvider):
                 message_id=message_id,
                 in_reply_to=in_reply_to,
                 references=references,
+                thread_index=thread_index,
             )
 
             # Enviar via SMTP
@@ -443,7 +445,7 @@ class IMAPEmailProvider(EmailProvider):
             folder, ident, is_uid = self._parse_external_id(external_message_id)
             imap = self._ensure_imap()
             self._select_folder(imap, folder, readonly=True)
-            crit = "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID REFERENCES IN-REPLY-TO)])"
+            crit = "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID REFERENCES IN-REPLY-TO THREAD-INDEX)])"
             if is_uid:
                 status, data = imap.uid("FETCH", ident, crit)
             else:
@@ -457,6 +459,7 @@ class IMAPEmailProvider(EmailProvider):
                 "message_id": _clean(hdr.get("Message-ID")),
                 "references": _clean(hdr.get("References")),
                 "in_reply_to": _clean(hdr.get("In-Reply-To")),
+                "thread_index": _clean(hdr.get("Thread-Index")),
             }
         except Exception as e:
             log.warning(f"Não foi possível obter headers de encadeamento: {e}")

@@ -103,13 +103,84 @@ def _pick_reply_target(demand):
     return max(pool, key=lambda m: m.received_at)
 
 
+def _child_thread_index(parent_b64):
+    """Estende o Thread-Index do e-mail original com um bloco de 5 bytes,
+    tornando a resposta um "filho" da mesma conversa no Outlook. Devolve None
+    se não houver Thread-Index no original ou se algo falhar."""
+    if not parent_b64:
+        return None
+    try:
+        import base64 as _b64, struct as _struct, time as _time
+        raw = _b64.b64decode(parent_b64)
+        if len(raw) < 22:  # cabeçalho válido tem no mínimo 22 bytes
+            return None
+        block = _struct.pack(">IB", int(_time.time()) & 0xFFFFFFFF, 0)  # 5 bytes
+        return _b64.b64encode(raw + block).decode("ascii")
+    except Exception:
+        return None
+
+
+def _strip_html_to_text(html_str: str) -> str:
+    if not html_str:
+        return ""
+    import re as _re
+    t = _re.sub(r"(?is)<(script|style).*?</\1>", "", html_str)
+    t = _re.sub(r"(?is)<br\s*/?>", "\n", t)
+    t = _re.sub(r"(?is)</p>|</div>", "\n", t)
+    t = _re.sub(r"(?is)<[^>]+>", "", t)
+    return _html.unescape(t).strip()
+
+
+def _quote_target(demand):
+    """Mensagem a ser citada na resposta: a mais recente da conversa com corpo."""
+    msgs = [m for m in (demand.messages or []) if (m.body_text or m.body_html)]
+    if not msgs:
+        return None
+    return max(msgs, key=lambda m: m.received_at)
+
+
+def _build_reply_bodies(demand, new_text: str, inline: list):
+    """Monta (texto, html) da resposta incluindo o histórico citado (estilo
+    Outlook). Se não houver o que citar, devolve o texto simples (e html só se
+    houver print embutido)."""
+    new_html = _build_html_body(new_text, inline)
+    t = _quote_target(demand)
+    if not t:
+        return new_text, (new_html if inline else None)
+    when = t.received_at.strftime("%d/%m/%Y %H:%M") if t.received_at else ""
+    who_p = f"{t.sender_name} <{t.sender_email}>" if t.sender_name else (t.sender_email or "")
+    # HTML citado
+    who_h = (f"{_html.escape(t.sender_name)} &lt;{_html.escape(t.sender_email or '')}&gt;"
+             if t.sender_name else _html.escape(t.sender_email or ""))
+    orig_html = t.body_html or ("<div>" + _html.escape(t.body_text or "").replace("\n", "<br>") + "</div>")
+    quote_html = (
+        '<div style="border-top:1px solid #ccc;margin-top:16px;padding-top:8px;font-family:Arial,Helvetica,sans-serif;font-size:14px">'
+        f"<b>De:</b> {who_h}<br><b>Enviada em:</b> {when}<br>"
+        f"<b>Para:</b> {_html.escape(t.recipient_emails or '')}<br>"
+        f"<b>Assunto:</b> {_html.escape(t.subject or '')}</div><br>"
+        f"{orig_html}"
+    )
+    send_html = new_html + quote_html
+    # Texto citado
+    orig_text = t.body_text or _strip_html_to_text(t.body_html)
+    quote_text = (
+        "\n\n________________________________\n"
+        f"De: {who_p}\nEnviada em: {when}\n"
+        f"Para: {t.recipient_emails or ''}\nAssunto: {t.subject or ''}\n\n"
+        f"{orig_text or ''}"
+    )
+    send_text = (new_text or "") + quote_text
+    return send_text, send_html
+
+
 def _thread_headers_for_reply(provider, demand, from_addr):
-    """Best-effort: gera Message-ID próprio e busca In-Reply-To/References do
-    e-mail original para encadear a resposta no Outlook/Gmail. Nunca lança —
-    se falhar, devolve só o Message-ID e o envio segue sem encadear."""
+    """Best-effort: gera Message-ID próprio e busca In-Reply-To/References/
+    Thread-Index do e-mail original para encadear a resposta no Outlook/Gmail.
+    Nunca lança — se falhar, devolve só o Message-ID e o envio segue sem encadear."""
     message_id = make_msgid(domain=_domain_of(from_addr))
     in_reply_to = None
     references = None
+    thread_index = None
     try:
         target = _pick_reply_target(demand)
         getter = getattr(provider, "get_thread_headers", None)
@@ -120,9 +191,10 @@ def _thread_headers_for_reply(provider, demand, from_addr):
                 in_reply_to = parent
                 chain = h.get("references")
                 references = f"{chain} {parent}" if chain else parent
+            thread_index = _child_thread_index(h.get("thread_index"))
     except Exception:
         pass
-    return message_id, in_reply_to, references
+    return message_id, in_reply_to, references, thread_index
 
 
 def _friendly_send_error(e: Exception) -> str:
@@ -435,23 +507,26 @@ async def reply_demand(
         attachments_data.append((f.filename or "arquivo", f.content_type or "application/octet-stream", content))
 
     inline = await _read_inline_images(inline_images)
-    body_html = _build_html_body(payload.body_text, inline) if inline else None
-    msg_id, in_reply_to, references = _thread_headers_for_reply(provider, demand, from_addr)
+    # Corpo da resposta com o histórico citado (estilo Outlook). O que é
+    # gravado no banco continua sendo só o texto novo (payload.body_text).
+    send_text, send_html = _build_reply_bodies(demand, payload.body_text, inline)
+    msg_id, in_reply_to, references, thread_index = _thread_headers_for_reply(provider, demand, from_addr)
 
     try:
         ext_id = provider.send_reply(
             to=primary_to[0],
             from_addr=from_addr,
             subject=reply_subject,
-            body_text=payload.body_text,
+            body_text=send_text,
             thread_id=demand.external_thread_id or None,
             cc=(primary_to[1:] + cc_clean) or None,
             attachments=attachments_data or None,
-            body_html=body_html,
+            body_html=send_html,
             inline_images=inline or None,
             message_id=msg_id,
             in_reply_to=in_reply_to,
             references=references,
+            thread_index=thread_index,
         )
     except HTTPException:
         raise

@@ -288,7 +288,7 @@ class GmailEmailProvider(EmailProvider):
         data = resp.json().get("data", "")
         return _b64url_decode(data)
 
-    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None, attachments: Optional[List[tuple]] = None, body_html: Optional[str] = None, inline_images: Optional[List[tuple]] = None, message_id: Optional[str] = None, in_reply_to: Optional[str] = None, references: Optional[str] = None) -> str:
+    def send_reply(self, to: str, from_addr: str, subject: str, body_text: str, thread_id: Optional[str] = None, cc: Optional[List[str]] = None, attachments: Optional[List[tuple]] = None, body_html: Optional[str] = None, inline_images: Optional[List[tuple]] = None, message_id: Optional[str] = None, in_reply_to: Optional[str] = None, references: Optional[str] = None, thread_index: Optional[str] = None) -> str:
         """Envia resposta por e-mail e retorna o external_id da mensagem enviada.
         attachments: lista de (filename, mime_type, bytes)
         inline_images: lista de (filename, mime_type, bytes, cid) para print no corpo
@@ -307,6 +307,7 @@ class GmailEmailProvider(EmailProvider):
             message_id=message_id,
             in_reply_to=in_reply_to,
             references=references,
+            thread_index=thread_index,
         )
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
         payload: dict = {"raw": raw}

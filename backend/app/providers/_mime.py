@@ -50,6 +50,7 @@ def build_email_mime(
     message_id: Optional[str] = None,
     in_reply_to: Optional[str] = None,
     references: Optional[str] = None,
+    thread_index: Optional[str] = None,
 ):
     """Monta a mensagem MIME.
 
@@ -108,4 +109,7 @@ def build_email_mime(
         root["In-Reply-To"] = in_reply_to
     if references:
         root["References"] = references
+    # Thread-Index: cabeçalho que o Outlook usa para agrupar a conversa.
+    if thread_index:
+        root["Thread-Index"] = thread_index
     return root
