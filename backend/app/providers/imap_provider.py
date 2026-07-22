@@ -138,6 +138,51 @@ class IMAPEmailProvider(EmailProvider):
                 continue
         return folders or ["INBOX"]
 
+    def _find_sent_folder(self, imap) -> Optional[str]:
+        """Descobre a pasta de "Enviados" no servidor (ex.: 'Itens Enviados',
+        'Sent', 'Sent Items'). Aceita override por env IMAP_SENT_FOLDER."""
+        import os as _os
+        import re as _re
+        override = (_os.environ.get("IMAP_SENT_FOLDER") or "").strip()
+        if override:
+            return override
+        try:
+            folders = self._list_folders(imap)
+        except Exception:
+            return None
+        # candidatos que "parecem" pasta de enviados
+        cands = [f for f in folders if _re.search(r"enviad|sent", f, _re.I)]
+        if not cands:
+            return None
+        # prefere a raiz (menos separadores de hierarquia e nome mais curto),
+        # evitando subpastas como "Itens Enviados.1-4 MIRELLA.Follow up"
+        cands.sort(key=lambda f: (f.count("."), len(f)))
+        return cands[0]
+
+    def save_to_sent(self, msg_bytes: bytes) -> bool:
+        """Salva uma cópia do e-mail enviado na pasta de Enviados do servidor
+        (IMAP APPEND), para aparecer no Outlook/webmail. Best-effort.
+
+        A cópia leva o cabeçalho X-Juridico-Origin: gestor, e o sync pula
+        mensagens com essa marca (já registradas no envio) para não duplicar."""
+        try:
+            import time as _time
+            imap = self._ensure_imap()
+            folder = self._find_sent_folder(imap)
+            if not folder:
+                log.warning("Pasta de Enviados não encontrada — cópia não salva.")
+                return False
+            typ, _data = imap.append(
+                f'"{folder}"', "(\\Seen)", imaplib.Time2Internaldate(_time.time()), msg_bytes
+            )
+            if typ != "OK":
+                log.warning(f"APPEND na pasta Enviados retornou {typ}.")
+                return False
+            return True
+        except Exception as e:
+            log.warning(f"Não foi possível salvar cópia em Enviados: {e}")
+            return False
+
     def _close_imap(self):
         """Fecha conexão IMAP."""
         if self._imap:
@@ -231,6 +276,10 @@ class IMAPEmailProvider(EmailProvider):
                 return None
 
             email_msg = message_from_bytes(data[0][1])
+            # Cópia de um e-mail enviado pelo próprio gestor (marcada): já foi
+            # registrada no momento do envio — pular para não duplicar.
+            if (email_msg.get("X-Juridico-Origin") or "").strip().lower() == "gestor":
+                return None
             return self._parse_message(external_id, email_msg)
         except Exception as e:
             log.error(f"Erro ao buscar mensagem {external_id}: {e}")
@@ -371,6 +420,13 @@ class IMAPEmailProvider(EmailProvider):
                     smtp.starttls()
                 smtp.login(self.email, self.password)
                 smtp.send_message(msg)
+
+            # Salva a cópia na pasta de Enviados do servidor (para aparecer no
+            # Outlook/webmail). Best-effort: falhar aqui NÃO desfaz o envio.
+            try:
+                self.save_to_sent(msg.as_bytes())
+            except Exception as e:
+                log.warning(f"Cópia em Enviados não salva (envio OK): {e}")
 
             return f"{from_addr}_{datetime.now(timezone.utc).timestamp()}"
         except Exception as e:

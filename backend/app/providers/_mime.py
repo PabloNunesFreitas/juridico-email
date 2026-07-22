@@ -8,6 +8,7 @@ from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formatdate
 from typing import List, Optional, Tuple
 
 # attachments: (filename, mime_type, bytes)
@@ -92,6 +93,11 @@ def build_email_mime(
     root["From"] = from_addr
     root["To"] = to
     root["Subject"] = subject
+    root["Date"] = formatdate(localtime=False)
+    # Marca as mensagens enviadas pelo gestor: a cópia salva na pasta de
+    # Enviados carrega este cabeçalho, e o sync a ignora (já foi registrada no
+    # envio) para não duplicar na visão do gestor.
+    root["X-Juridico-Origin"] = "gestor"
     if cc:
         root["Cc"] = ", ".join(cc)
     # Cabeçalhos de encadeamento (threading) — fazem o Outlook/Gmail agruparem a
